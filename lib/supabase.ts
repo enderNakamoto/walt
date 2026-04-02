@@ -1,4 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
+import { Keypair } from "@stellar/stellar-sdk";
+import "./env"; // validate env vars on first import
 import type {
   Project,
   ExplorationSnapshot,
@@ -35,15 +37,49 @@ export async function getProject(id: string): Promise<Project | null> {
 }
 
 export async function createProject(
-  project: Pick<Project, "name" | "dapp_url" | "wallet_secret" | "wallet_public">,
+  project: Pick<Project, "name" | "dapp_url"> & {
+    wallet_secret?: string | null;
+    wallet_public?: string | null;
+  },
 ): Promise<Project> {
+  let { wallet_secret, wallet_public } = project;
+
+  // Auto-generate and fund a testnet wallet if none provided
+  if (!wallet_secret) {
+    const keypair = Keypair.random();
+    wallet_secret = keypair.secret();
+    wallet_public = keypair.publicKey();
+
+    await fundWithFriendbot(wallet_public);
+  } else if (!wallet_public) {
+    wallet_public = Keypair.fromSecret(wallet_secret).publicKey();
+  }
+
   const { data, error } = await supabase
     .from("projects")
-    .insert(project)
+    .insert({
+      name: project.name,
+      dapp_url: project.dapp_url,
+      wallet_secret,
+      wallet_public,
+    })
     .select()
     .single();
   if (error) throw error;
   return data as Project;
+}
+
+async function fundWithFriendbot(publicKey: string): Promise<void> {
+  const res = await fetch(
+    `https://friendbot.stellar.org?addr=${encodeURIComponent(publicKey)}`,
+  );
+  if (!res.ok) {
+    console.warn(
+      `[friendbot] Failed to fund ${publicKey}: ${res.status} ${res.statusText}`,
+    );
+  } else {
+    console.log(`[friendbot] Funded testnet account ${publicKey}`);
+  }
 }
 
 export async function deleteProject(id: string): Promise<void> {

@@ -9,7 +9,7 @@
 | 5 | Exploration Frontend | complete | Live screenshot viewer |
 | 6 | Conversation Engine | complete | Chat backend + tool loop |
 | 7 | Chat Frontend | complete | Chat UI + code display |
-| 8 | Test Runner | not_started | Local Playwright execution |
-| 9 | Run Results Frontend | not_started | Step-by-step results UI |
-| 10 | Project Management | not_started | CRUD + landing + navigation |
-| 11 | Integration & Polish | not_started | E2E flow + demo prep |
+| 8 | Test Runner | complete | Local Playwright execution |
+| 9 | Run Results Frontend | complete | Step-by-step results UI |
+| 10 | Project Management | complete | CRUD + landing + navigation |
+| 11 | Integration & Polish | complete | E2E flow + demo prep |
