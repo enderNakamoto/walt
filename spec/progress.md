@@ -6,7 +6,7 @@
 | 2 | Supabase & Schema | complete | 6 tables + client lib |
 | 3 | Core Utilities (SSE + Claude) | complete | SSE helper + Claude wrapper |
 | 4 | Exploration Engine | complete | Backend crawler + API route |
-| 5 | Exploration Frontend | not_started | Live screenshot viewer |
+| 5 | Exploration Frontend | complete | Live screenshot viewer |
 | 6 | Conversation Engine | not_started | Chat backend + tool loop |
 | 7 | Chat Frontend | not_started | Chat UI + code display |
 | 8 | Test Runner | not_started | Local Playwright execution |
