@@ -4,8 +4,8 @@
 |-------|------|--------|-------|
 | 1 | Scaffolding & Config | complete | Next.js + deps + types |
 | 2 | Supabase & Schema | complete | 6 tables + client lib |
-| 3 | Core Utilities (SSE + Claude) | not_started | SSE helper + Claude wrapper |
-| 4 | Exploration Engine | not_started | Backend crawler + API route |
+| 3 | Core Utilities (SSE + Claude) | complete | SSE helper + Claude wrapper |
+| 4 | Exploration Engine | complete | Backend crawler + API route |
 | 5 | Exploration Frontend | not_started | Live screenshot viewer |
 | 6 | Conversation Engine | not_started | Chat backend + tool loop |
 | 7 | Chat Frontend | not_started | Chat UI + code display |
