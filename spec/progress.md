@@ -1,0 +1,15 @@
+# Progress Dashboard
+
+| Phase | Name | Status | Notes |
+|-------|------|--------|-------|
+| 1 | Scaffolding & Config | not_started | Next.js + deps + types |
+| 2 | Supabase & Schema | not_started | 6 tables + client lib |
+| 3 | Core Utilities (SSE + Claude) | not_started | SSE helper + Claude wrapper |
+| 4 | Exploration Engine | not_started | Backend crawler + API route |
+| 5 | Exploration Frontend | not_started | Live screenshot viewer |
+| 6 | Conversation Engine | not_started | Chat backend + tool loop |
+| 7 | Chat Frontend | not_started | Chat UI + code display |
+| 8 | Test Runner | not_started | Local Playwright execution |
+| 9 | Run Results Frontend | not_started | Step-by-step results UI |
+| 10 | Project Management | not_started | CRUD + landing + navigation |
+| 11 | Integration & Polish | not_started | E2E flow + demo prep |
