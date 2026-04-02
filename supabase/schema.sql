@@ -1,0 +1,2 @@
+-- Schema — implemented in Phase 2
+-- See spec/architecture.md Section 4 for full schema

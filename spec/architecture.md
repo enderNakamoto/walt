@@ -20,7 +20,7 @@ An AI agent that explores Stellar/Soroban dApps and generates Playwright tests f
 | BullMQ + Redis scheduling | Manual run button | No cron needed for demo |
 | Fly Machines (remote VMs) | Local Playwright execution | Eliminates infra complexity |
 | 3 LLM providers (Claude, GPT-4, Gemini) | Claude only | One provider is enough |
-| Multi-tenancy (accounts, members, RLS) | Single user, basic Supabase auth | No teams for demo |
+| Multi-tenancy (accounts, members, RLS) | Single user, no auth | No teams for demo |
 | Personas (multi-actor wallets) | Single wallet per project | Simplifies exploration + test gen |
 | Failure analysis + self-healing | Skip | Mention in pitch as future |
 | Notifications (email, Slack, webhook) | Skip | Dashboard is enough |
@@ -53,8 +53,8 @@ An AI agent that explores Stellar/Soroban dApps and generates Playwright tests f
    │  Supabase   │   │  Claude    │   │   Playwright   │
    │             │   │  API       │   │   (local)      │
    │ - Postgres  │   │            │   │                │
-   │ - Auth      │   │ Tool calls │   │ - Chromium     │
-   │ - Storage   │   │ + vision   │   │ - wallet-mock  │
+   │ - Storage   │   │ Tool calls │   │ - Chromium     │
+   │             │   │ + vision   │   │ - wallet-mock  │
    └─────────────┘   └────────────┘   └────────────────┘
 ```
 
@@ -98,7 +98,7 @@ stellar-test-agent/
 │   └── ui/                         # shadcn components
 │
 ├── lib/
-│   ├── supabase.ts                 # Supabase client (browser + server)
+│   ├── supabase.ts                 # Supabase client (server-side, service role key)
 │   ├── claude.ts                   # Claude API wrapper (~100 lines)
 │   ├── agent/
 │   │   ├── explorer.ts             # Exploration loop (Playwright + Claude)
@@ -123,7 +123,6 @@ stellar-test-agent/
 -- Projects — one per dApp
 CREATE TABLE projects (
     id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id         uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     name            text NOT NULL,
     dapp_url        text NOT NULL,
     wallet_secret   text,            -- single wallet secret key (encrypted)
@@ -281,7 +280,7 @@ Standard REST. No SSE.
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/api/projects` | Create project `{name, dapp_url, wallet_secret?}` |
-| GET | `/api/projects` | List user's projects |
+| GET | `/api/projects` | List all projects |
 | GET | `/api/projects/:id` | Project detail with exploration data |
 | DELETE | `/api/projects/:id` | Delete project |
 
@@ -913,7 +912,7 @@ Step 4 (pitch)
 | `playwright` | Browser automation (exploration) |
 | `@playwright/test` | Test execution (runner) |
 | `stellar-wallet-mock` | Wallet mocking for Stellar dApps |
-| `@supabase/supabase-js` | DB + auth + storage |
+| `@supabase/supabase-js` | DB + storage |
 | `tailwindcss` + `shadcn/ui` | UI |
 
 **7 dependencies.** No Redis, no BullMQ, no ioredis, no Fly SDK, no OpenAI, no Gemini.

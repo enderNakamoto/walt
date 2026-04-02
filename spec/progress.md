@@ -2,7 +2,7 @@
 
 | Phase | Name | Status | Notes |
 |-------|------|--------|-------|
-| 1 | Scaffolding & Config | not_started | Next.js + deps + types |
+| 1 | Scaffolding & Config | complete | Next.js + deps + types |
 | 2 | Supabase & Schema | not_started | 6 tables + client lib |
 | 3 | Core Utilities (SSE + Claude) | not_started | SSE helper + Claude wrapper |
 | 4 | Exploration Engine | not_started | Backend crawler + API route |
