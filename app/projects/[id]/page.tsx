@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+
+export const dynamic = "force-dynamic";
 import { Badge } from "@/components/ui/badge";
 import {
   Search,
@@ -12,6 +14,7 @@ import {
   Wallet,
   Layers,
 } from "lucide-react";
+import { DeleteProjectButton } from "./delete-project-button";
 
 export default async function ProjectPage({
   params,
@@ -27,7 +30,8 @@ export default async function ProjectPage({
   return (
     <div className="mx-auto max-w-4xl space-y-6 p-6">
       {/* Project info */}
-      <div>
+      <div className="flex items-start justify-between">
+        <div>
         <h1 className="text-2xl font-bold">{project.name}</h1>
         <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
           <span className="flex items-center gap-1">
@@ -42,6 +46,8 @@ export default async function ProjectPage({
             </span>
           )}
         </div>
+        </div>
+        <DeleteProjectButton projectId={project.id} />
       </div>
 
       {/* Action cards */}

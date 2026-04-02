@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSSE } from "@/lib/hooks/useSSE";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import {
   Loader2,
   Clock,
   ChevronDown,
+  Trash2,
   ChevronRight,
   X,
   Code2,
@@ -44,11 +45,13 @@ export default function RunResults({
   initialRuns: TestRun[];
 }) {
   const router = useRouter();
+  const [runs, setRuns] = useState<TestRun[]>(initialRuns);
   const [steps, setSteps] = useState<StepResult[]>([]);
   const [statusMessage, setStatusMessage] = useState("");
   const [runStatus, setRunStatus] = useState<string | null>(null);
   const [runDuration, setRunDuration] = useState<number | null>(null);
   const [isRunning, setIsRunning] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
   const [expandedScreenshot, setExpandedScreenshot] = useState<string | null>(
     null,
   );
@@ -56,8 +59,6 @@ export default function RunResults({
   const [historySteps, setHistorySteps] = useState<
     Record<string, StepResult[]>
   >({});
-
-  const body = useMemo(() => ({ agentId }), [agentId]);
 
   const onEvent = useCallback((event: SSEEvent) => {
     switch (event.type) {
@@ -80,20 +81,21 @@ export default function RunResults({
       case "done":
         setRunStatus(event.status ?? null);
         setRunDuration(event.durationMs ?? null);
+        setRunError(event.error ?? null);
         setIsRunning(false);
         setStatusMessage("");
         break;
       case "error":
         setRunStatus("error");
+        setRunError(event.message);
         setIsRunning(false);
-        setStatusMessage(event.message);
+        setStatusMessage("");
         break;
     }
   }, []);
 
   const { isStreaming, error, start } = useSSE({
     url: "/api/run",
-    body,
     onEvent,
   });
 
@@ -101,9 +103,10 @@ export default function RunResults({
     setSteps([]);
     setRunStatus(null);
     setRunDuration(null);
+    setRunError(null);
     setStatusMessage("");
     setIsRunning(true);
-    start();
+    start({ agentId });
   };
 
   const loadHistorySteps = async (runId: string) => {
@@ -123,6 +126,26 @@ export default function RunResults({
       // ignore
     }
     setExpandedHistory(runId);
+  };
+
+  const handleDeleteRun = async (runId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await fetch(`/api/test-runs/${runId}`, { method: "DELETE" });
+      setRuns((prev) => prev.filter((r) => r.id !== runId));
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleDeleteAgent = async () => {
+    if (!agentId) return;
+    try {
+      await fetch(`/api/agents/${agentId}`, { method: "DELETE" });
+      window.location.href = `/projects/${project.id}/chat`;
+    } catch {
+      // ignore
+    }
   };
 
   const canRun = agentId && hasTestCode && !isRunning && !isStreaming;
@@ -155,6 +178,17 @@ export default function RunResults({
             <Button variant="outline" onClick={handleRun} disabled={!canRun}>
               <RotateCcw className="mr-2 h-4 w-4" />
               Re-run
+            </Button>
+          )}
+          {agentId && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleDeleteAgent}
+              className="text-destructive hover:bg-destructive/10"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete Agent
             </Button>
           )}
         </div>
@@ -211,6 +245,16 @@ export default function RunResults({
               </div>
             )}
 
+            {/* Run error */}
+            {runError && (
+              <div className="mb-4 rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm">
+                <p className="mb-1 font-medium text-destructive">Test Error</p>
+                <pre className="whitespace-pre-wrap text-xs text-destructive/80">
+                  {runError}
+                </pre>
+              </div>
+            )}
+
             {/* Steps */}
             <div className="space-y-3">
               {steps.map((step) => (
@@ -232,7 +276,7 @@ export default function RunResults({
       )}
 
       {/* Run history */}
-      {initialRuns.length > 0 && (
+      {runs.length > 0 && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Previous Runs</CardTitle>
@@ -240,11 +284,12 @@ export default function RunResults({
           <CardContent>
             <ScrollArea className="max-h-[400px]">
               <div className="space-y-2">
-                {initialRuns.map((run) => (
+                {runs.map((run) => (
                   <div key={run.id} className="rounded-lg border">
+                    <div className="flex items-center">
                     <button
                       onClick={() => loadHistorySteps(run.id)}
-                      className="flex w-full items-center justify-between px-4 py-3 text-left text-sm hover:bg-muted/50"
+                      className="flex flex-1 items-center justify-between px-4 py-3 text-left text-sm hover:bg-muted/50"
                     >
                       <div className="flex items-center gap-3">
                         {expandedHistory === run.id ? (
@@ -266,6 +311,13 @@ export default function RunResults({
                         )}
                       </div>
                     </button>
+                    <button
+                      onClick={(e) => handleDeleteRun(run.id, e)}
+                      className="mr-3 rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                    </div>
                     {expandedHistory === run.id && historySteps[run.id] && (
                       <div className="space-y-2 border-t px-4 py-3">
                         {historySteps[run.id].map((step: StepResult) => (

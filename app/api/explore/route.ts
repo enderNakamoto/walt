@@ -3,7 +3,7 @@ import { explore } from "@/lib/agent/explorer";
 import { getProject } from "@/lib/supabase";
 
 export async function POST(request: Request) {
-  const { projectId, dappUrl } = await request.json();
+  const { projectId, dappUrl, forceRefresh } = await request.json();
 
   // Validate inputs
   if (!projectId || !dappUrl) {
@@ -40,15 +40,17 @@ export async function POST(request: Request) {
   });
 
   // Start exploration in background — don't await
+  // explore() owns sse.close() in its finally block
   explore(
     dappUrl,
     project.wallet_secret,
     sse,
     projectId,
     abortController.signal,
+    forceRefresh ?? false,
   ).catch((err) => {
+    console.error("[explore] Unhandled error:", err);
     sse.send({ type: "error", message: err.message || "Exploration failed" });
-    sse.close();
   });
 
   return sse.response();

@@ -174,6 +174,16 @@ export async function createAgent(
   return data as Agent;
 }
 
+export async function deleteAgent(id: string): Promise<void> {
+  const { error } = await supabase.from("agents").delete().eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteTestRun(id: string): Promise<void> {
+  const { error } = await supabase.from("test_runs").delete().eq("id", id);
+  if (error) throw error;
+}
+
 export async function updateAgentTestCode(
   id: string,
   testCode: string,

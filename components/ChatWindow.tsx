@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSSE } from "@/lib/hooks/useSSE";
 import { Button } from "@/components/ui/button";
@@ -74,12 +74,6 @@ export default function ChatWindow({
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, statusText]);
-
-  // SSE body changes per message — we use a ref to track current message
-  const [sseBody, setSseBody] = useState<Record<string, unknown>>({
-    agentId,
-    message: "",
-  });
 
   const onEvent = useCallback((event: SSEEvent) => {
     switch (event.type) {
@@ -158,7 +152,6 @@ export default function ChatWindow({
 
   const { isStreaming, error, start } = useSSE({
     url: "/api/chat",
-    body: sseBody,
     onEvent,
   });
 
@@ -175,17 +168,8 @@ export default function ChatWindow({
     setStatusText("Thinking...");
     pendingMessageRef.current = "";
 
-    // Update body and trigger start
-    const newBody = { agentId, message: msg };
-    setSseBody(newBody);
+    start({ agentId, message: msg });
   };
-
-  // Start SSE when body changes (after send)
-  useEffect(() => {
-    if (sseBody.message && isWaiting) {
-      start();
-    }
-  }, [sseBody, start, isWaiting]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -205,13 +189,12 @@ export default function ChatWindow({
           <h1 className="font-semibold">Test Agent — {project.name}</h1>
         </div>
         {hasTestCode && (
-          <Button
-            size="sm"
-            onClick={() => router.push(`/projects/${project.id}/runs`)}
-          >
-            <Play className="mr-2 h-4 w-4" />
-            Run Test
-          </Button>
+          <a href={`/projects/${project.id}/runs`}>
+            <Button size="sm">
+              <Play className="mr-2 h-4 w-4" />
+              Run Test
+            </Button>
+          </a>
         )}
       </div>
 
@@ -240,7 +223,19 @@ export default function ChatWindow({
           {messages.map((msg) => (
             <div key={msg.id}>
               <MessageBubble message={msg} />
-              {msg.testCode && <CodeBlock code={msg.testCode} />}
+              {msg.testCode && (
+                <>
+                  <CodeBlock code={msg.testCode} />
+                  <div className="ml-9 mt-2">
+                    <a href={`/projects/${project.id}/runs`}>
+                      <Button size="sm">
+                        <Play className="mr-2 h-4 w-4" />
+                        Run Test
+                      </Button>
+                    </a>
+                  </div>
+                </>
+              )}
             </div>
           ))}
 

@@ -25,6 +25,7 @@ export async function chatWithTools(
 export async function describeScreenshot(
   screenshot: Buffer,
   context: string,
+  mediaType: "image/png" | "image/jpeg" = "image/jpeg",
 ): Promise<string> {
   const response = await client.messages.create({
     model: "claude-sonnet-4-20250514",
@@ -37,7 +38,7 @@ export async function describeScreenshot(
             type: "image",
             source: {
               type: "base64",
-              media_type: "image/png",
+              media_type: mediaType,
               data: screenshot.toString("base64"),
             },
           },

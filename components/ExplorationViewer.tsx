@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSSE } from "@/lib/hooks/useSSE";
 import { Button } from "@/components/ui/button";
@@ -36,11 +36,6 @@ export default function ExplorationViewer({ project }: { project: Project }) {
   const [statusMessage, setStatusMessage] = useState<string>("");
   const [isDone, setIsDone] = useState(false);
   const [totalPages, setTotalPages] = useState<number>(0);
-
-  const body = useMemo(
-    () => ({ projectId: project.id, dappUrl: project.dapp_url }),
-    [project.id, project.dapp_url],
-  );
 
   const onEvent = useCallback((event: SSEEvent) => {
     switch (event.type) {
@@ -103,17 +98,20 @@ export default function ExplorationViewer({ project }: { project: Project }) {
 
   const { isStreaming, error, start, stop } = useSSE({
     url: "/api/explore",
-    body,
     onEvent,
   });
 
-  const handleStart = () => {
+  const handleStart = (fresh = false) => {
     setPages(new Map());
     setCurrentScreenshot(null);
     setStatusMessage("");
     setIsDone(false);
     setTotalPages(0);
-    start();
+    start({
+      projectId: project.id,
+      dappUrl: project.dapp_url,
+      forceRefresh: fresh,
+    });
   };
 
   const doneCount = Array.from(pages.values()).filter(
@@ -134,10 +132,20 @@ export default function ExplorationViewer({ project }: { project: Project }) {
         </div>
         <div className="flex items-center gap-2">
           {!hasStarted && (
-            <Button onClick={handleStart} disabled={isStreaming}>
-              <Search className="mr-2 h-4 w-4" />
-              Start Exploration
-            </Button>
+            <>
+              <Button onClick={() => handleStart(false)} disabled={isStreaming}>
+                <Search className="mr-2 h-4 w-4" />
+                Explore
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => handleStart(true)}
+                disabled={isStreaming}
+              >
+                <RotateCcw className="mr-2 h-4 w-4" />
+                Fresh Explore
+              </Button>
+            </>
           )}
           {isStreaming && (
             <Button variant="outline" onClick={stop}>
@@ -146,9 +154,13 @@ export default function ExplorationViewer({ project }: { project: Project }) {
           )}
           {isDone && (
             <>
-              <Button variant="outline" onClick={handleStart}>
+              <Button variant="outline" onClick={() => handleStart(false)}>
+                <Search className="mr-2 h-4 w-4" />
+                Continue
+              </Button>
+              <Button variant="outline" onClick={() => handleStart(true)}>
                 <RotateCcw className="mr-2 h-4 w-4" />
-                Re-Explore
+                Fresh Explore
               </Button>
               <Button
                 onClick={() => router.push(`/projects/${project.id}/chat`)}

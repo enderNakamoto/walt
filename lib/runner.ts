@@ -85,15 +85,19 @@ export default defineConfig({
 
     const start = Date.now();
 
+    let testStderr = "";
     try {
       await execAsync("npx playwright test --reporter=json", {
         cwd: tmpDir,
         env,
         timeout: RUN_TIMEOUT_MS,
       });
-    } catch {
+    } catch (execErr: unknown) {
       // Playwright exits with non-zero on test failure — that's expected
-      // We still parse results.json
+      // Capture stderr for error reporting
+      if (execErr && typeof execErr === "object" && "stderr" in execErr) {
+        testStderr = String((execErr as { stderr: unknown }).stderr);
+      }
     }
 
     const durationMs = Date.now() - start;
@@ -101,16 +105,20 @@ export default defineConfig({
     // Parse results
     const resultsPath = join(tmpDir, "results.json");
     if (!existsSync(resultsPath)) {
+      const errorDetail = testStderr
+        ? `Test crashed:\n${testStderr.slice(0, 1000)}`
+        : "No results.json produced — test may have crashed";
+      console.error("[runner] No results.json. stderr:", testStderr.slice(0, 500));
       sse.send({
         type: "done",
         status: "error",
-        error: "No results.json produced — test may have crashed",
+        error: errorDetail,
       });
       await updateTestRun(testRun.id, {
         status: "error",
         completed_at: new Date().toISOString(),
         duration_ms: durationMs,
-        error_summary: "No results.json produced",
+        error_summary: errorDetail.slice(0, 500),
       });
       return { status: "error", durationMs };
     }
