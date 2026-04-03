@@ -8,6 +8,8 @@ import type {
   Message,
   TestRun,
   TestRunStep,
+  ScheduledReport,
+  ScheduleInterval,
 } from "./types";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -176,7 +178,14 @@ export async function createAgent(
 
 export async function updateAgent(
   id: string,
-  updates: { name?: string; description?: string },
+  updates: {
+    name?: string;
+    description?: string;
+    schedule?: ScheduleInterval;
+    schedule_enabled?: boolean;
+    next_run_at?: string | null;
+    last_scheduled_run_at?: string | null;
+  },
 ): Promise<void> {
   const { error } = await supabase.from("agents").update(updates).eq("id", id);
   if (error) throw error;
@@ -293,6 +302,44 @@ export async function createTestRunStep(
     .single();
   if (error) throw error;
   return data as TestRunStep;
+}
+
+// ── Scheduled Runs ──
+
+export async function getDueAgents(): Promise<Agent[]> {
+  const { data, error } = await supabase
+    .from("agents")
+    .select("*")
+    .eq("schedule_enabled", true)
+    .lte("next_run_at", new Date().toISOString())
+    .not("test_code", "is", null);
+  if (error) throw error;
+  return data as Agent[];
+}
+
+export async function updateAgentSchedule(
+  id: string,
+  updates: { schedule?: string; schedule_enabled?: boolean; next_run_at?: string | null; last_scheduled_run_at?: string | null },
+): Promise<void> {
+  const { error } = await supabase.from("agents").update(updates).eq("id", id);
+  if (error) throw error;
+}
+
+export async function createScheduledReport(report: Omit<ScheduledReport, 'id' | 'created_at'>): Promise<ScheduledReport> {
+  const { data, error } = await supabase.from("scheduled_reports").insert(report).select().single();
+  if (error) throw error;
+  return data as ScheduledReport;
+}
+
+export async function getScheduledReports(agentId: string, limit = 10): Promise<ScheduledReport[]> {
+  const { data, error } = await supabase
+    .from("scheduled_reports")
+    .select("*")
+    .eq("agent_id", agentId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data as ScheduledReport[];
 }
 
 // ── Storage ──

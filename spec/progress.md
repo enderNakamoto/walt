@@ -19,3 +19,4 @@
 | 15 | Self-Healing Runner | complete | Fail → diagnose → fix → retry loop (up to 3x) |
 | 16 | Rich Test Results | complete | Console logs, network errors, test-setup fixture |
 | 17 | Integration & Polish v2 | complete | Inspection screenshots in chat, prompt coherence |
+| 18 | Scheduled Agent Runs | not_started | Cron-based recurring test execution with reports |

@@ -32,6 +32,11 @@ CREATE TABLE agents (
     test_code       text,
     status          text NOT NULL DEFAULT 'draft'
                     CHECK (status IN ('draft', 'active')),
+    schedule        text DEFAULT 'off'
+                    CHECK (schedule IN ('off', '1h', '6h', '12h', '24h', '48h', '7d')),
+    schedule_enabled boolean NOT NULL DEFAULT false,
+    next_run_at     timestamptz,
+    last_scheduled_run_at timestamptz,
     created_at      timestamptz NOT NULL DEFAULT now()
 );
 
@@ -69,9 +74,23 @@ CREATE TABLE test_run_steps (
     duration_ms     integer
 );
 
+-- Scheduled reports — results from scheduled/cron agent runs
+CREATE TABLE scheduled_reports (
+    id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    agent_id        uuid NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+    test_run_id     uuid REFERENCES test_runs(id) ON DELETE SET NULL,
+    status          text NOT NULL CHECK (status IN ('passed', 'failed', 'error')),
+    summary         text NOT NULL,
+    steps           jsonb,
+    healing_summary jsonb,
+    created_at      timestamptz NOT NULL DEFAULT now()
+);
+
 -- Indexes
 CREATE INDEX idx_snapshots_project ON exploration_snapshots(project_id);
 CREATE INDEX idx_agents_project ON agents(project_id);
 CREATE INDEX idx_messages_agent ON messages(agent_id);
 CREATE INDEX idx_runs_agent ON test_runs(agent_id);
 CREATE INDEX idx_steps_run ON test_run_steps(test_run_id);
+CREATE INDEX idx_agents_next_run ON agents(next_run_at) WHERE schedule_enabled = true;
+CREATE INDEX idx_reports_agent ON scheduled_reports(agent_id);

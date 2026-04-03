@@ -20,6 +20,8 @@ export interface ExplorationSnapshot {
   created_at: string;
 }
 
+export type ScheduleInterval = 'off' | '1h' | '6h' | '12h' | '24h' | '48h' | '7d';
+
 export interface Agent {
   id: string;
   project_id: string;
@@ -27,6 +29,21 @@ export interface Agent {
   description: string | null;
   test_code: string | null;
   status: "draft" | "active";
+  schedule: ScheduleInterval;
+  schedule_enabled: boolean;
+  next_run_at: string | null;
+  last_scheduled_run_at: string | null;
+  created_at: string;
+}
+
+export interface ScheduledReport {
+  id: string;
+  agent_id: string;
+  test_run_id: string | null;
+  status: 'passed' | 'failed' | 'error';
+  summary: string;
+  steps: Array<{ name: string; status: string; durationMs?: number; error?: string }> | null;
+  healing_summary: HealingSummary | null;
   created_at: string;
 }
 

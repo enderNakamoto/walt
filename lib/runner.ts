@@ -12,7 +12,7 @@ import {
   hasPassingRun,
 } from "./supabase";
 import { diagnoseTestFailure } from "./claude";
-import type { SSEWriter, ConsoleLogEntry, NetworkErrorEntry } from "./types";
+import type { SSEWriter, ConsoleLogEntry, NetworkErrorEntry, HealingSummary } from "./types";
 import { WAIT_UTILS_SOURCE } from "./wait-utils";
 
 const TEST_SETUP_SOURCE = `
@@ -146,7 +146,7 @@ export async function runTest(
   walletSecret: string | null,
   agentId: string,
   sse: SSEWriter,
-): Promise<{ status: "passed" | "failed" | "error"; durationMs: number }> {
+): Promise<{ status: "passed" | "failed" | "error"; durationMs: number; testRunId: string }> {
   const runId = randomUUID();
   const tmpDir = join("/tmp", `stellar-test-${runId}`);
   await mkdir(tmpDir, { recursive: true });
@@ -281,7 +281,7 @@ export default defineConfig({
           duration_ms: totalDurationMs,
           error_summary: errorDetail.slice(0, 500),
         });
-        return { status: "error", durationMs: totalDurationMs };
+        return { status: "error", durationMs: totalDurationMs, testRunId: testRun.id };
       }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -319,7 +319,7 @@ export default defineConfig({
           duration_ms: totalDurationMs,
           error_summary: compileError.slice(0, 500),
         });
-        return { status: "error", durationMs: totalDurationMs };
+        return { status: "error", durationMs: totalDurationMs, testRunId: testRun.id };
       }
 
       for (const spec of allSpecs) {
@@ -430,7 +430,7 @@ export default defineConfig({
         });
 
         sse.send({ type: "done", status: "passed", durationMs: totalDurationMs });
-        return { status: "passed", durationMs: totalDurationMs };
+        return { status: "passed", durationMs: totalDurationMs, testRunId: testRun.id };
       }
 
       // Test failed — analyze error type to decide: retry (transient) or heal (structural)
@@ -580,7 +580,7 @@ export default defineConfig({
     });
 
     sse.send({ type: "done", status: "failed", durationMs: finalDurationMs });
-    return { status: "failed", durationMs: finalDurationMs };
+    return { status: "failed", durationMs: finalDurationMs, testRunId: testRun.id };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     const stack = err instanceof Error ? err.stack : String(err);
@@ -594,12 +594,81 @@ export default defineConfig({
       error_summary: message,
     });
 
-    return { status: "error", durationMs: 0 };
+    return { status: "error", durationMs: 0, testRunId: testRun.id };
   } finally {
     if (timeoutHandle) clearTimeout(timeoutHandle);
     await rm(tmpDir, { recursive: true, force: true });
     sse.close();
   }
+}
+
+export async function runTestHeadless(
+  testCode: string,
+  dappUrl: string,
+  walletSecret: string | null,
+  agentId: string,
+): Promise<{
+  status: 'passed' | 'failed' | 'error';
+  durationMs: number;
+  steps: Array<{ name: string; status: string; durationMs?: number; error?: string }>;
+  healingSummary: HealingSummary | null;
+  testRunId: string | null;
+}> {
+  // Collect SSE events with a mock writer instead of streaming to a client
+  const events: Array<Record<string, unknown>> = [];
+  const mockSse: SSEWriter = {
+    send: (data) => { events.push(data as Record<string, unknown>); },
+    close: () => {},
+  };
+
+  const result = await runTest(testCode, dappUrl, walletSecret, agentId, mockSse);
+
+  // Parse collected events into structured result
+  const steps = events
+    .filter(e => e.type === 'step')
+    .map(e => ({
+      name: e.name as string,
+      status: e.status as string,
+      durationMs: e.durationMs as number | undefined,
+      error: e.error as string | undefined,
+    }));
+
+  const healedEvent = events.find(e => e.type === 'healed');
+  const healingEvents = events.filter(e => e.type === 'healing');
+
+  let healingSummary: HealingSummary | null = null;
+  if (healedEvent || healingEvents.length > 0) {
+    const attempts: HealingSummary['attempts'] = healingEvents.map((h, i) => ({
+      attempt: i + 1,
+      status: 'failed' as const,
+      steps: ((h.failedSteps as Array<{ name: string; error: string }>) ?? []).map(fs => ({
+        name: fs.name,
+        error: fs.error,
+      })),
+    }));
+    if (healedEvent) {
+      attempts.push({
+        attempt: (healedEvent.totalAttempts as number) ?? attempts.length + 1,
+        status: 'passed' as const,
+        steps: ((healedEvent.passedSteps as Array<{ name: string; durationMs: number }>) ?? []).map(ps => ({
+          name: ps.name,
+          durationMs: ps.durationMs,
+        })),
+      });
+    }
+    healingSummary = {
+      totalAttempts: (healedEvent?.totalAttempts as number) ?? healingEvents.length + 1,
+      attempts,
+    };
+  }
+
+  return {
+    status: result.status,
+    durationMs: result.durationMs,
+    steps,
+    healingSummary,
+    testRunId: result.testRunId,
+  };
 }
 
 function execAsync(

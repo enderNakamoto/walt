@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Highlight, themes } from "prism-react-renderer";
-import type { Project, Agent, TestRun, SSEEvent } from "@/lib/types";
+import type { Project, Agent, TestRun, SSEEvent, ScheduleInterval, ScheduledReport } from "@/lib/types";
 import {
   Play,
   RotateCcw,
@@ -29,6 +29,8 @@ import {
   Pencil,
   Terminal,
   Wifi,
+  CalendarClock,
+  Timer,
 } from "lucide-react";
 
 interface StepResult {
@@ -73,6 +75,10 @@ export default function RunResults({
   const [editingAgent, setEditingAgent] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [agentNames, setAgentNames] = useState<Record<string, string>>({});
+  const [schedules, setSchedules] = useState<Record<string, { schedule: ScheduleInterval; schedule_enabled: boolean; next_run_at: string | null; last_scheduled_run_at: string | null }>>({});
+  const [reports, setReports] = useState<Record<string, ScheduledReport[]>>({});
+  const [expandedReports, setExpandedReports] = useState<string | null>(null);
+  const [loadingReports, setLoadingReports] = useState<Record<string, boolean>>({});
 
   const onEvent = useCallback((event: SSEEvent) => {
     switch (event.type) {
@@ -144,6 +150,12 @@ export default function RunResults({
         const withCode = allAgents.filter((a) => a.test_code);
         setAgentsList(withCode);
         setAgentNames(Object.fromEntries(withCode.map((a) => [a.id, a.name])));
+        setSchedules(Object.fromEntries(withCode.map((a) => [a.id, {
+          schedule: a.schedule ?? 'off',
+          schedule_enabled: a.schedule_enabled ?? false,
+          next_run_at: a.next_run_at ?? null,
+          last_scheduled_run_at: a.last_scheduled_run_at ?? null,
+        }])));
 
         // Select agent from URL param or first available
         const selectId = paramAgent && withCode.some((a) => a.id === paramAgent)
@@ -266,6 +278,49 @@ export default function RunResults({
     } catch {
       // ignore
     }
+  };
+
+  const handleScheduleChange = async (agentId: string, schedule: ScheduleInterval) => {
+    const enabled = schedule !== 'off';
+    try {
+      await fetch(`/api/agents/${agentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ schedule, schedule_enabled: enabled }),
+      });
+      setSchedules((prev) => ({
+        ...prev,
+        [agentId]: {
+          ...prev[agentId],
+          schedule,
+          schedule_enabled: enabled,
+          next_run_at: enabled ? new Date(Date.now() + getIntervalMs(schedule)).toISOString() : null,
+        },
+      }));
+    } catch {
+      // ignore
+    }
+  };
+
+  const loadReports = async (agentId: string) => {
+    if (expandedReports === agentId) {
+      setExpandedReports(null);
+      return;
+    }
+    if (!reports[agentId]) {
+      setLoadingReports((prev) => ({ ...prev, [agentId]: true }));
+      try {
+        const res = await fetch(`/api/agents/${agentId}/reports`);
+        if (res.ok) {
+          const data = await res.json();
+          setReports((prev) => ({ ...prev, [agentId]: data }));
+        }
+      } catch {
+        // ignore
+      }
+      setLoadingReports((prev) => ({ ...prev, [agentId]: false }));
+    }
+    setExpandedReports(agentId);
   };
 
   const hasCurrentRun = steps.length > 0 || isRunning || runStatus;
@@ -423,6 +478,17 @@ export default function RunResults({
                   <SyntaxCodeBlock code={agent.test_code} onClose={() => setExpandedCode(null)} />
                 </div>
               )}
+
+              {/* Schedule controls */}
+              <ScheduleSection
+                agentId={agent.id}
+                schedule={schedules[agent.id]}
+                onScheduleChange={handleScheduleChange}
+                onToggleReports={() => loadReports(agent.id)}
+                reportsExpanded={expandedReports === agent.id}
+                reports={reports[agent.id]}
+                loadingReports={loadingReports[agent.id] ?? false}
+              />
 
               {/* Current run for this agent */}
               {isThisRunning || (hasCurrentRun && runningAgentId === agent.id) ? (
@@ -618,6 +684,210 @@ export default function RunResults({
               className="max-h-[90vh] rounded-lg"
             />
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Schedule helpers ──
+
+const SCHEDULE_LABELS: Record<ScheduleInterval, string> = {
+  off: 'Off',
+  '1h': 'Every hour',
+  '6h': 'Every 6 hours',
+  '12h': 'Every 12 hours',
+  '24h': 'Every 24 hours',
+  '48h': 'Every 48 hours',
+  '7d': 'Every 7 days',
+};
+
+function getIntervalMs(schedule: ScheduleInterval): number {
+  const map: Record<string, number> = {
+    '1h': 3600000,
+    '6h': 21600000,
+    '12h': 43200000,
+    '24h': 86400000,
+    '48h': 172800000,
+    '7d': 604800000,
+  };
+  return map[schedule] ?? 86400000;
+}
+
+function relativeTime(dateStr: string | null): string {
+  if (!dateStr) return '';
+  const diff = new Date(dateStr).getTime() - Date.now();
+  const absDiff = Math.abs(diff);
+  const isFuture = diff > 0;
+
+  if (absDiff < 60000) return isFuture ? 'in less than a minute' : 'just now';
+  if (absDiff < 3600000) {
+    const mins = Math.round(absDiff / 60000);
+    return isFuture ? `in ${mins}m` : `${mins}m ago`;
+  }
+  if (absDiff < 86400000) {
+    const hrs = Math.round(absDiff / 3600000);
+    return isFuture ? `in ${hrs}h` : `${hrs}h ago`;
+  }
+  const days = Math.round(absDiff / 86400000);
+  return isFuture ? `in ${days}d` : `${days}d ago`;
+}
+
+function ScheduleSection({
+  agentId,
+  schedule,
+  onScheduleChange,
+  onToggleReports,
+  reportsExpanded,
+  reports,
+  loadingReports,
+}: {
+  agentId: string;
+  schedule?: { schedule: ScheduleInterval; schedule_enabled: boolean; next_run_at: string | null; last_scheduled_run_at: string | null };
+  onScheduleChange: (agentId: string, schedule: ScheduleInterval) => void;
+  onToggleReports: () => void;
+  reportsExpanded: boolean;
+  reports?: ScheduledReport[];
+  loadingReports: boolean;
+}) {
+  const sched = schedule ?? { schedule: 'off' as ScheduleInterval, schedule_enabled: false, next_run_at: null, last_scheduled_run_at: null };
+
+  return (
+    <div className="rounded-lg border bg-muted/5 p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <CalendarClock className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm font-medium">Schedule</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <select
+            value={sched.schedule}
+            onChange={(e) => onScheduleChange(agentId, e.target.value as ScheduleInterval)}
+            className="h-7 rounded border bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+          >
+            {Object.entries(SCHEDULE_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {sched.schedule_enabled && sched.schedule !== 'off' && (
+        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+          {sched.next_run_at && (
+            <span className="flex items-center gap-1">
+              <Timer className="h-3 w-3" />
+              Next run: {relativeTime(sched.next_run_at)}
+            </span>
+          )}
+          {sched.last_scheduled_run_at && (
+            <span>
+              Last scheduled: {relativeTime(sched.last_scheduled_run_at)}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Reports toggle */}
+      <button
+        onClick={onToggleReports}
+        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+      >
+        {reportsExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        <FileText className="h-3 w-3" />
+        Scheduled Reports
+        {reports && reports.length > 0 && (
+          <Badge variant="outline" className="ml-1 h-4 px-1 text-[10px]">{reports.length}</Badge>
+        )}
+      </button>
+
+      {/* Reports list */}
+      {reportsExpanded && (
+        <div className="space-y-2 pt-1">
+          {loadingReports && (
+            <div className="flex items-center justify-center py-3">
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            </div>
+          )}
+          {!loadingReports && reports && reports.length === 0 && (
+            <p className="text-xs text-muted-foreground py-2">No scheduled reports yet.</p>
+          )}
+          {!loadingReports && reports && reports.map((report) => (
+            <ReportCard key={report.id} report={report} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReportCard({ report }: { report: ScheduledReport }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className={`rounded-lg border ${report.status === 'passed' ? 'border-green-500/20' : 'border-destructive/20'}`}>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex w-full items-center justify-between px-3 py-2 text-left text-xs hover:bg-muted/50"
+      >
+        <div className="flex items-center gap-2">
+          {expanded ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
+          {report.status === 'passed' ? (
+            <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+          ) : (
+            <XCircle className="h-3.5 w-3.5 text-destructive" />
+          )}
+          <span className="text-muted-foreground">
+            {new Date(report.created_at).toLocaleString()}
+          </span>
+        </div>
+        <Badge
+          variant={report.status === 'passed' ? 'outline' : 'destructive'}
+          className={`text-[10px] ${report.status === 'passed' ? 'border-green-500/30 text-green-600' : ''}`}
+        >
+          {report.status === 'passed' ? 'Passed' : report.status === 'failed' ? 'Failed' : 'Error'}
+        </Badge>
+      </button>
+
+      {expanded && (
+        <div className="border-t px-3 py-2 space-y-1.5">
+          <p className="text-xs text-muted-foreground">{report.summary}</p>
+
+          {report.steps && report.steps.length > 0 && (
+            <div className="space-y-1">
+              {report.steps.map((step, i) => (
+                <div key={i} className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-1.5">
+                    {step.status === 'passed' ? (
+                      <CheckCircle2 className="h-3 w-3 text-green-500" />
+                    ) : (
+                      <XCircle className="h-3 w-3 text-destructive" />
+                    )}
+                    <span>{step.name}</span>
+                  </div>
+                  {step.durationMs != null && (
+                    <span className="text-muted-foreground">{(step.durationMs / 1000).toFixed(1)}s</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {report.steps && report.steps.some(s => s.error) && (
+            <div className="text-xs text-destructive/80">
+              {report.steps.filter(s => s.error).map((s, i) => (
+                <p key={i} className="mt-1">{s.name}: {s.error}</p>
+              ))}
+            </div>
+          )}
+
+          {report.healing_summary && (
+            <div className="text-xs">
+              <Badge className="bg-blue-500/10 text-blue-600 hover:bg-blue-500/10 text-[10px]">
+                Self-healed (attempt {report.healing_summary.totalAttempts})
+              </Badge>
+            </div>
+          )}
         </div>
       )}
     </div>
