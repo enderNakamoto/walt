@@ -26,82 +26,70 @@ Then we thought bigger: what if an AI agent could **explore any Stellar dApp, ge
 
 ### Prerequisites
 
-- Node.js 18+
-- Supabase project (local or hosted)
-- Anthropic API key
+- **Docker** — required for local Supabase (Postgres + Storage)
+- **Node.js 18+**
+- **Anthropic API key** — for Claude API (vision + tool-calling)
 
-### Setup
+### 1. Start Supabase (Docker)
+
+WALT uses Supabase for the database and screenshot storage. Start it locally with Docker:
 
 ```bash
-# Clone and install
+# Install Supabase CLI if you haven't
+npm install -g supabase
+
+# Start local Supabase (requires Docker running)
+supabase start
+
+# This starts Postgres on port 54322 and the API on port 54321
+# Note the anon key and service role key printed in the output
+```
+
+> **Docker must be running.** Supabase spins up Postgres, Auth, Storage, and other services in containers. If you don't have Docker: [Install Docker Desktop](https://docs.docker.com/get-docker/).
+
+### 2. Clone and Install
+
+```bash
 git clone https://github.com/enderNakamoto/walt.git
 cd walt
 npm install
 
-# Install Playwright browser
+# Install Playwright's Chromium browser
 npx playwright install chromium
-
-# Configure environment
-cp .env.example .env.local
-# Edit .env.local with your keys
 ```
 
-### Environment Variables
+### 3. Configure Environment
+
+```bash
+cp .env.example .env.local
+```
+
+Edit `.env.local` with your keys:
 
 ```env
-ANTHROPIC_API_KEY=sk-ant-...          # Claude API key
-NEXT_PUBLIC_SUPABASE_URL=https://...  # Supabase project URL
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...  # Supabase anon key
-SUPABASE_SERVICE_ROLE_KEY=eyJ...      # Supabase service role key
+ANTHROPIC_API_KEY=sk-ant-...          # Claude API key (get from console.anthropic.com)
+NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321  # Local Supabase API URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...  # From `supabase start` output
+SUPABASE_SERVICE_ROLE_KEY=eyJ...      # From `supabase start` output
 CRON_SECRET=...                       # (optional) Protects the /api/cron endpoint
 ```
 
-### Database Setup
-
-Run the schema against your Supabase project:
+### 4. Set Up Database
 
 ```bash
-# Via Supabase dashboard SQL editor, or:
-psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -f supabase/schema.sql
+# Apply schema to local Supabase
+PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -f supabase/schema.sql
 
-# Optional: seed demo data
-psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -f supabase/seed.sql
+# Optional: seed with demo data
+PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -f supabase/seed.sql
 ```
 
-### Run
+### 5. Run
 
 ```bash
 npm run dev
 # Open http://localhost:3000
 ```
-
-## Demo Flow
-
-1. **Create Project** — enter dApp URL (e.g. `https://sentinel-stellar-2.vercel.app/`), click Create. A testnet wallet is auto-generated and funded via Friendbot.
-
-2. **Explore** — click Explore. Screenshots stream in live as the agent crawls pages, extracts DOM data, accessibility tree, and describes each page via Claude vision.
-
-3. **Chat** — describe a test in plain English:
-   > "Go to the faucet page and mint USDC, then go to the vault page, deposit 50 USDC, and verify the TVL increases"
-
-   The agent inspects each page live, asks about success criteria for each step, and generates a multi-step Playwright test with `stellar-wallet-mock`.
-
-4. **Run** — click Run. Step-by-step results stream in with screenshots. If a step fails, the agent self-heals: diagnoses the issue from the failure screenshot, fixes the selector/assertion, and retries automatically.
-
-5. **Schedule** — set a recurring interval (1h–7d). WALT runs the test automatically and generates reports. If the frontend changes and breaks a test, self-healing kicks in.
-
-## Tech Stack
-
-| Component | Technology |
-|-----------|-----------|
-| Framework | Next.js 14 (App Router) |
-| AI | Claude API (`@anthropic-ai/sdk`) with vision |
-| Browser automation | Playwright |
-| Wallet mock | [`stellar-wallet-mock`](https://github.com/SentinelFi/stellar_wallet_mock) |
-| Database + Storage | Supabase (Postgres + Storage) |
-| UI | Tailwind CSS + shadcn/ui |
-| Fonts | JetBrains Mono + DM Sans |
-
 ## Architecture
 
 ```
@@ -168,12 +156,21 @@ dev_plans/                  # Phase specs and architecture plans
 supabase/                   # Database schema
 ```
 
+## Tech Stack
+
+| Component | Technology |
+|-----------|-----------|
+| Framework | Next.js 14 (App Router) |
+| AI | Claude API (`@anthropic-ai/sdk`) with vision |
+| Browser automation | Playwright |
+| Wallet mock | [`stellar-wallet-mock`](https://github.com/SentinelFi/stellar_wallet_mock) |
+| Database + Storage | Supabase (Postgres + Storage) |
+| UI | Tailwind CSS + shadcn/ui |
+| Fonts | JetBrains Mono + DM Sans |
+
 ## Key Dependencies
 
 - [`stellar-wallet-mock`](https://github.com/SentinelFi/stellar_wallet_mock) — Open-source Freighter wallet mock for Playwright tests. Built by us as the foundation for WALT.
 - `@anthropic-ai/sdk` — Claude API for vision analysis, test generation, and self-healing diagnosis
 - `playwright` — Browser automation for exploration and test execution
 
-## License
-
-ISC
