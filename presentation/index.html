@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WALT — Presentation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0f1a;
+    --bg-card: #0f1525;
+    --fg: #e2e8f0;
+    --muted: #64748b;
+    --primary: #2dd4bf;
+    --primary-dim: rgba(45, 212, 191, 0.15);
+    --accent: #38bdf8;
+    --red: #f87171;
+    --green: #4ade80;
+    --yellow: #fbbf24;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'DM Sans', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  /* ── Slide Container ── */
+  .deck {
+    display: flex;
+    transition: transform 0.7s cubic-bezier(0.65, 0, 0.35, 1);
+    height: 100vh;
+  }
+
+  .slide {
+    min-width: 100vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 4rem 6rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* ── Dot Grid Background ── */
+  .slide::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(circle, rgba(100,116,139,0.08) 1px, transparent 1px);
+    background-size: 30px 30px;
+    pointer-events: none;
+  }
+
+  /* ── Radial glow behind content ── */
+  .slide::after {
+    content: '';
+    position: absolute;
+    width: 600px;
+    height: 600px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(45,212,191,0.06) 0%, transparent 70%);
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+
+  .slide > * { position: relative; z-index: 1; }
+
+  /* ── Typography ── */
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  h1 { font-family: 'JetBrains Mono', monospace; font-weight: 800; }
+  h2 { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 2.5rem; margin-bottom: 1.5rem; }
+  h3 { font-family: 'JetBrains Mono', monospace; font-weight: 600; font-size: 1.3rem; color: var(--primary); margin-bottom: 0.5rem; }
+  p { line-height: 1.7; color: var(--muted); font-size: 1.15rem; }
+  .text-primary { color: var(--primary); }
+  .text-accent { color: var(--accent); }
+  .text-muted { color: var(--muted); }
+  .text-lg { font-size: 1.4rem; }
+
+  /* ── Gradient Text ── */
+  .text-gradient {
+    background: linear-gradient(135deg, var(--primary), var(--accent));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--bg-card);
+    border: 1px solid rgba(100,116,139,0.15);
+    border-radius: 12px;
+    padding: 1.5rem 2rem;
+    transition: all 0.3s ease;
+  }
+  .card:hover {
+    border-color: rgba(45,212,191,0.3);
+    box-shadow: 0 0 30px -10px rgba(45,212,191,0.15);
+    transform: translateY(-2px);
+  }
+
+  /* ── Pill ── */
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    border: 1px solid rgba(100,116,139,0.2);
+    color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .pill-glow {
+    border-color: rgba(45,212,191,0.3);
+    color: var(--primary);
+    background: var(--primary-dim);
+  }
+
+  /* ── Status Dot ── */
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .dot-green { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .dot-red { background: var(--red); box-shadow: 0 0 8px var(--red); }
+  .dot-yellow { background: var(--yellow); box-shadow: 0 0 8px var(--yellow); }
+  .dot-primary { background: var(--primary); box-shadow: 0 0 8px var(--primary); }
+
+  /* ── Animations ── */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(30px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes scaleIn {
+    from { opacity: 0; transform: scale(0.9); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  @keyframes slideRight {
+    from { opacity: 0; transform: translateX(-40px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+  @keyframes typing {
+    from { width: 0; }
+    to { width: 100%; }
+  }
+  @keyframes blink {
+    0%, 100% { border-color: var(--primary); }
+    50% { border-color: transparent; }
+  }
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
+  @keyframes glow-pulse {
+    0%, 100% { box-shadow: 0 0 20px -5px rgba(45,212,191,0.2); }
+    50% { box-shadow: 0 0 40px -5px rgba(45,212,191,0.4); }
+  }
+  @keyframes spin-slow {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+    20%, 40%, 60%, 80% { transform: translateX(4px); }
+  }
+  @keyframes strikethrough {
+    from { width: 0; }
+    to { width: 100%; }
+  }
+
+  .anim-fade-up { animation: fadeUp 0.6s ease-out both; }
+  .anim-fade-in { animation: fadeIn 0.5s ease-out both; }
+  .anim-scale-in { animation: scaleIn 0.5s ease-out both; }
+  .anim-slide-right { animation: slideRight 0.5s ease-out both; }
+  .anim-float { animation: float 4s ease-in-out infinite; }
+  .anim-glow { animation: glow-pulse 3s ease-in-out infinite; }
+  .anim-pulse { animation: pulse 2s ease-in-out infinite; }
+
+  .delay-1 { animation-delay: 0.15s; }
+  .delay-2 { animation-delay: 0.3s; }
+  .delay-3 { animation-delay: 0.45s; }
+  .delay-4 { animation-delay: 0.6s; }
+  .delay-5 { animation-delay: 0.75s; }
+  .delay-6 { animation-delay: 0.9s; }
+  .delay-7 { animation-delay: 1.05s; }
+
+  /* ── Flow Diagram ── */
+  .flow {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .flow-step {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 1.2rem;
+    border-radius: 8px;
+    background: var(--bg-card);
+    border: 1px solid rgba(100,116,139,0.15);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.9rem;
+  }
+  .flow-arrow {
+    color: var(--primary);
+    font-size: 1.2rem;
+    font-weight: bold;
+  }
+
+  /* ── Terminal ── */
+  .terminal {
+    background: #0c1221;
+    border: 1px solid rgba(100,116,139,0.2);
+    border-radius: 12px;
+    padding: 1.5rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+    line-height: 1.8;
+    max-width: 700px;
+    width: 100%;
+  }
+  .terminal-header {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 1rem;
+  }
+  .terminal-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+  }
+  .t-green { color: var(--green); }
+  .t-red { color: var(--red); }
+  .t-yellow { color: var(--yellow); }
+  .t-muted { color: var(--muted); }
+  .t-primary { color: var(--primary); }
+  .t-accent { color: var(--accent); }
+
+  /* ── Navigation ── */
+  .nav {
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    display: flex;
+    gap: 0.5rem;
+    z-index: 100;
+  }
+  .nav button {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    border: 1px solid rgba(100,116,139,0.3);
+    background: var(--bg-card);
+    color: var(--fg);
+    font-size: 1.2rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .nav button:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+    box-shadow: 0 0 15px -3px rgba(45,212,191,0.3);
+  }
+
+  /* ── Slide Counter ── */
+  .counter {
+    position: fixed;
+    bottom: 2rem;
+    left: 2rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--muted);
+    z-index: 100;
+  }
+
+  /* ── Progress Bar ── */
+  .progress-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--primary), var(--accent));
+    transition: width 0.7s cubic-bezier(0.65, 0, 0.35, 1);
+    z-index: 100;
+  }
+
+  /* ── Grid layouts ── */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; width: 100%; max-width: 900px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.5rem; width: 100%; max-width: 1000px; }
+
+  /* ── Healing Animation ── */
+  .heal-line {
+    position: relative;
+    padding: 0.3rem 0;
+  }
+  .heal-line.struck::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    height: 2px;
+    background: var(--red);
+    animation: strikethrough 0.5s ease-out both;
+  }
+  .heal-line.fixed {
+    color: var(--green);
+  }
+
+  /* ── Big Number ── */
+  .big-number {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 4rem;
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  /* ── Keyboard hint ── */
+  .kbd {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid rgba(100,116,139,0.3);
+    background: rgba(100,116,139,0.1);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+</style>
+</head>
+<body>
+
+<div class="progress-bar" id="progress"></div>
+
+<div class="deck" id="deck">
+
+  <!-- ════════ SLIDE 1: Title ════════ -->
+  <section class="slide">
+    <div style="text-align:center;">
+      <!-- Animated logo -->
+      <div class="anim-scale-in" style="margin-bottom:2rem;">
+        <div style="display:inline-flex;align-items:center;gap:12px;margin-bottom:1rem;">
+          <span class="dot dot-primary anim-pulse" style="width:14px;height:14px;"></span>
+        </div>
+      </div>
+      <h1 class="text-gradient anim-fade-up" style="font-size:6rem;letter-spacing:-2px;">WALT</h1>
+      <p class="anim-fade-up delay-1" style="font-size:1.6rem;color:var(--fg);margin-top:1rem;">
+        Wallet-Aware LLM Tester
+      </p>
+      <p class="anim-fade-up delay-2" style="margin-top:0.75rem;font-size:1.15rem;">
+        AI agent that explores Stellar dApps and generates self-healing Playwright tests
+      </p>
+      <div class="anim-fade-up delay-3" style="margin-top:2rem;display:flex;gap:12px;justify-content:center;">
+        <span class="pill pill-glow"><span class="dot dot-primary" style="width:6px;height:6px;"></span> Auto-Explore</span>
+        <span class="pill pill-glow"><span class="dot dot-primary" style="width:6px;height:6px;"></span> Self-Healing</span>
+        <span class="pill pill-glow"><span class="dot dot-primary" style="width:6px;height:6px;"></span> Wallet-Aware</span>
+      </div>
+      <p class="anim-fade-in delay-5" style="margin-top:3rem;font-size:0.85rem;color:var(--muted);">
+        Stellar Hackathon 2026 &nbsp;&middot;&nbsp; <span class="kbd">&larr;</span> <span class="kbd">&rarr;</span> to navigate
+      </p>
+    </div>
+  </section>
+
+  <!-- ════════ SLIDE 2: Origin Story ════════ -->
+  <section class="slide">
+    <h2 class="text-gradient anim-fade-up">Origin Story</h2>
+
+    <div style="max-width:800px;width:100%;">
+      <!-- Chapter 1: The problem we hit -->
+      <div class="card anim-slide-right delay-1" style="margin-bottom:1.5rem;border-left:3px solid var(--red);">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:0.5rem;">
+          <span class="dot dot-red"></span>
+          <h3 style="margin:0;">The Problem We Hit</h3>
+        </div>
+        <p style="font-size:1.05rem;">
+          We were building a <strong style="color:var(--fg);">niche prediction market on Soroban</strong>. When it came time to test the frontend, we hit a wall &mdash; there was <strong style="color:var(--red);">no way to programmatically mock Stellar wallets</strong> in Playwright tests.
+        </p>
+      </div>
+
+      <!-- Chapter 2: What we built first -->
+      <div class="card anim-slide-right delay-3" style="margin-bottom:1.5rem;border-left:3px solid var(--yellow);">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:0.5rem;">
+          <span class="dot dot-yellow"></span>
+          <h3 style="margin:0;">So We Built This</h3>
+        </div>
+        <div style="display:flex;align-items:center;gap:1rem;">
+          <div style="flex:1;">
+            <p style="font-size:1.05rem;">
+              <span class="mono text-accent">stellar-wallet-mock</span> &mdash; an open-source library that mocks the Freighter wallet in Playwright tests. Install it, pass a secret key, and your tests can sign Soroban transactions.
+            </p>
+          </div>
+        </div>
+        <div style="margin-top:0.75rem;">
+          <a href="https://github.com/SentinelFi/stellar_wallet_mock" target="_blank" style="text-decoration:none;">
+            <span class="pill pill-glow" style="cursor:pointer;">
+              <span style="font-size:0.9rem;">&#9734;</span>
+              github.com/SentinelFi/stellar_wallet_mock
+            </span>
+          </a>
+        </div>
+      </div>
+
+      <!-- Chapter 3: The next step -->
+      <div class="card anim-slide-right delay-5" style="border-left:3px solid var(--primary);">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:0.5rem;">
+          <span class="dot dot-primary"></span>
+          <h3 style="margin:0;">Then We Thought Bigger</h3>
+        </div>
+        <p style="font-size:1.05rem;">
+          What if we didn't just mock the wallet &mdash; what if an <strong style="color:var(--primary);">AI agent could explore any Stellar dApp, generate the tests, and self-heal when things break</strong>?
+        </p>
+        <p style="font-size:1.05rem;margin-top:0.5rem;">
+          That's WALT. It uses <span class="mono text-accent">stellar-wallet-mock</span> under the hood to launch autonomous front-end agents that <strong style="color:var(--fg);">find bugs before your users do</strong>.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════ SLIDE 3: How It Works ════════ -->
+  <section class="slide">
+    <h2 class="text-gradient anim-fade-up">How It Works</h2>
+    <p class="anim-fade-up delay-1" style="margin-bottom:2rem;max-width:600px;text-align:center;">
+      Four steps. One URL. Zero test-writing required.
+    </p>
+
+    <!-- Flow Diagram -->
+    <div class="flow anim-fade-up delay-2" style="margin-bottom:2.5rem;">
+      <div class="flow-step"><span class="dot dot-primary"></span> Enter URL</div>
+      <span class="flow-arrow">&rarr;</span>
+      <div class="flow-step"><span class="dot dot-green"></span> Explore</div>
+      <span class="flow-arrow">&rarr;</span>
+      <div class="flow-step"><span class="dot dot-yellow"></span> Chat</div>
+      <span class="flow-arrow">&rarr;</span>
+      <div class="flow-step"><span class="dot dot-green"></span> Run & Heal</div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card anim-slide-right delay-3">
+        <h3>1. Explore</h3>
+        <p style="font-size:0.95rem;">Agent crawls the dApp with Playwright + wallet mock. Screenshots every page, extracts DOM, builds accessibility tree.</p>
+      </div>
+      <div class="card anim-slide-right delay-4">
+        <h3>2. Inspect & Chat</h3>
+        <p style="font-size:0.95rem;">Describe your test in plain English. Agent inspects live pages, asks about success criteria, verifies selectors before writing code.</p>
+      </div>
+      <div class="card anim-slide-right delay-5">
+        <h3>3. Generate</h3>
+        <p style="font-size:0.95rem;">Produces Playwright tests with smart waits, wallet mock, and verified selectors. Each step is a separate test block.</p>
+      </div>
+      <div class="card anim-slide-right delay-6">
+        <h3>4. Run & Self-Heal</h3>
+        <p style="font-size:0.95rem;">Executes tests, retries transient failures, and uses Claude vision to diagnose and fix structural failures automatically.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════ SLIDE 4: Self-Healing ════════ -->
+  <section class="slide">
+    <h2 class="text-gradient anim-fade-up">Self-Healing Tests</h2>
+    <p class="anim-fade-up delay-1" style="margin-bottom:1.5rem;max-width:700px;text-align:center;font-size:1.2rem;">
+      Your frontend changes. Your tests don't break.
+    </p>
+
+    <div style="display:flex;gap:2rem;max-width:1000px;width:100%;align-items:flex-start;">
+      <!-- Left: Why it matters -->
+      <div style="flex:1;" class="anim-slide-right delay-2">
+        <h3 style="font-size:1.1rem;margin-bottom:1rem;">Why This Matters</h3>
+
+        <div class="card" style="margin-bottom:1rem;border-left:3px solid var(--yellow);">
+          <p style="font-size:0.95rem;"><strong style="color:var(--fg);">Scenario:</strong> Your designer moves the TVL display from the sidebar to a stats card at the top of the vault page.</p>
+        </div>
+
+        <div class="card anim-fade-up delay-3" style="margin-bottom:1rem;border-left:3px solid var(--red);">
+          <p style="font-size:0.95rem;"><strong style="color:var(--red);">Without WALT:</strong> Your Playwright test breaks. A developer spends 30 minutes finding the new selector, updating the test, re-running. Multiply by every test you have.</p>
+        </div>
+
+        <div class="card anim-fade-up delay-4" style="border-left:3px solid var(--green);">
+          <p style="font-size:0.95rem;"><strong style="color:var(--green);">With WALT:</strong> The agent sees the screenshot, notices TVL moved, updates the selector automatically, test passes. <span class="mono text-primary">Zero human effort.</span></p>
+        </div>
+
+        <div class="anim-fade-up delay-5" style="margin-top:1.2rem;display:flex;gap:0.75rem;flex-wrap:wrap;">
+          <span class="pill pill-glow" style="font-size:0.8rem;">Timeout? &rarr; Retry</span>
+          <span class="pill pill-glow" style="font-size:0.8rem;">Moved element? &rarr; Heal</span>
+          <span class="pill pill-glow" style="font-size:0.8rem;">Already passed? &rarr; Reuse</span>
+        </div>
+      </div>
+
+      <!-- Right: Terminal demo -->
+      <div style="flex:1;" class="anim-scale-in delay-3">
+        <div class="terminal" style="font-size:0.8rem;">
+          <div class="terminal-header">
+            <div class="terminal-dot" style="background:var(--red);"></div>
+            <div class="terminal-dot" style="background:var(--yellow);"></div>
+            <div class="terminal-dot" style="background:var(--green);"></div>
+          </div>
+          <div>
+            <span class="t-muted">Attempt 1:</span> <span class="t-red">&#10007;</span> <span class="t-red">Verify TVL on vault page</span><br>
+            <span class="t-muted">&nbsp;&nbsp;</span><span style="color:#f87171;">TVL element not found at .sidebar-stats</span><br>
+            <span class="t-muted">&nbsp;&nbsp;</span><span style="color:#f87171;">(UI redesign moved it to .stats-grid)</span><br>
+            <br>
+            <span class="t-primary">&#9881; Claude Vision analyzing screenshot...</span><br>
+            <span class="t-primary">&#9881; Found TVL in new location: .stats-grid</span><br>
+            <span class="t-primary">&#9881; Updating selector automatically</span><br>
+            <br>
+            <span class="t-muted">Attempt 2:</span> <span class="t-green">&#10003;</span> <span class="t-green">All steps passed</span> <span class="t-muted">(26.5s)</span><br>
+            <span class="t-muted">&nbsp;&nbsp;</span><span class="t-green">&#10003;</span> Mint USDC on faucet <span class="t-muted">3.2s</span><br>
+            <span class="t-muted">&nbsp;&nbsp;</span><span class="t-green">&#10003;</span> Verify balance >= 10,000 <span class="t-muted">1.8s</span><br>
+            <span class="t-muted">&nbsp;&nbsp;</span><span class="t-green">&#10003;</span> Deposit &amp; verify TVL <span class="t-muted">15.3s</span><br>
+            <br>
+            <span class="t-primary">&#10003; Healed code saved for future runs.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════ SLIDE 5: How It Helps ════════ -->
+  <section class="slide">
+    <h2 class="text-gradient anim-fade-up">Why It Matters</h2>
+
+    <div class="grid-3" style="margin-top:1rem;">
+      <div class="card anim-fade-up delay-1" style="text-align:center;">
+        <div class="big-number text-gradient">0</div>
+        <p style="margin-top:0.5rem;font-size:1rem;color:var(--fg);">lines of test code written</p>
+        <p style="font-size:0.85rem;">Describe in English, agent generates Playwright</p>
+      </div>
+      <div class="card anim-fade-up delay-2" style="text-align:center;">
+        <div class="big-number text-gradient">$0</div>
+        <p style="margin-top:0.5rem;font-size:1rem;color:var(--fg);">cost per passing run</p>
+        <p style="font-size:0.85rem;">Passing tests are pure Playwright &mdash; no LLM calls</p>
+      </div>
+      <div class="card anim-fade-up delay-3" style="text-align:center;">
+        <div class="big-number text-gradient">24/7</div>
+        <p style="margin-top:0.5rem;font-size:1rem;color:var(--fg);">scheduled monitoring</p>
+        <p style="font-size:0.85rem;">Cron runs catch regressions before users do</p>
+      </div>
+    </div>
+
+    <div class="grid-2" style="margin-top:2rem;max-width:800px;">
+      <div class="card anim-fade-up delay-4">
+        <h3>For Developers</h3>
+        <p style="font-size:0.95rem;">Stop writing brittle Playwright tests manually. Focus on building, let WALT handle testing.</p>
+      </div>
+      <div class="card anim-fade-up delay-5">
+        <h3>For Teams</h3>
+        <p style="font-size:0.95rem;">Continuous frontend monitoring with detailed reports. Know when your dApp breaks before your users do.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════ SLIDE 6: Demo ════════ -->
+  <section class="slide">
+    <div style="text-align:center;">
+      <h2 class="anim-fade-up" style="font-size:1.2rem;color:var(--muted);letter-spacing:4px;text-transform:uppercase;margin-bottom:1rem;">Live Demo</h2>
+      <h1 class="text-gradient anim-scale-in delay-1" style="font-size:5rem;letter-spacing:-2px;">Let's See It</h1>
+      <p class="anim-fade-up delay-2" style="margin-top:1.5rem;font-size:1.2rem;max-width:500px;">
+        Watch the agent explore a Stellar dApp, generate tests from natural language, and self-heal failures in real time.
+      </p>
+
+      <div class="anim-fade-up delay-3" style="margin-top:3rem;">
+        <div class="anim-glow" style="display:inline-flex;align-items:center;gap:12px;padding:1rem 2.5rem;border-radius:12px;border:1px solid rgba(45,212,191,0.3);background:var(--primary-dim);">
+          <span class="dot dot-primary anim-pulse" style="width:10px;height:10px;"></span>
+          <span class="mono" style="font-size:1.1rem;color:var(--primary);">DEMO TIME</span>
+        </div>
+      </div>
+
+      <div class="anim-fade-up delay-5" style="margin-top:2.5rem;">
+        <p style="font-size:0.95rem;color:var(--muted);">
+          <span class="kbd">&#8984; Tab</span> &nbsp;Switch to WALT
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════ SLIDE 7: Future ════════ -->
+  <section class="slide" style="padding:3rem 4rem;">
+    <h2 class="text-gradient anim-fade-up">What's Next</h2>
+    <p class="anim-fade-up delay-1" style="margin-bottom:1.5rem;max-width:600px;text-align:center;">
+      WALT is just getting started. Here's the roadmap.
+    </p>
+
+    <div class="grid-2" style="max-width:900px;">
+      <div class="card anim-fade-up delay-1">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:0.4rem;">
+          <span style="font-size:1.2rem;">&#128101;</span>
+          <h3 style="margin:0;">Multi-Persona Testing</h3>
+        </div>
+        <p style="font-size:0.9rem;">Admin pauses vault, User can't deposit. Test complex multi-actor Soroban scenarios.</p>
+      </div>
+
+      <div class="card anim-fade-up delay-2">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:0.4rem;">
+          <span style="font-size:1.2rem;">&#128247;</span>
+          <h3 style="margin:0;">Visual Regression</h3>
+        </div>
+        <p style="font-size:0.9rem;">Screenshot diff between runs. Catch visual regressions, not just functional ones.</p>
+      </div>
+
+      <div class="card anim-fade-up delay-3">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:0.4rem;">
+          <span style="font-size:1.2rem;">&#128272;</span>
+          <h3 style="margin:0;">Auth &amp; Teams</h3>
+        </div>
+        <p style="font-size:0.9rem;">Multi-user accounts, team workspaces, RBAC. Collaborate on test suites across your org.</p>
+      </div>
+
+      <div class="card anim-fade-up delay-4">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:0.4rem;">
+          <span style="font-size:1.2rem;">&#128176;</span>
+          <h3 style="margin:0;">Payments &amp; Metering</h3>
+        </div>
+        <p style="font-size:0.9rem;">Usage-based billing, plan limits, and detailed cost tracking per agent run and LLM call.</p>
+      </div>
+
+      <div class="card anim-fade-up delay-5">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:0.4rem;">
+          <span style="font-size:1.2rem;">&#9729;&#65039;</span>
+          <h3 style="margin:0;">Isolated VM Execution</h3>
+        </div>
+        <p style="font-size:0.9rem;">Launch each Playwright agent in its own sandboxed VM (Fly Machines). True scalability &mdash; run 100 tests in parallel.</p>
+      </div>
+
+      <div class="card anim-fade-up delay-6">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:0.4rem;">
+          <span style="font-size:1.2rem;">&#129302;</span>
+          <h3 style="margin:0;">Multi-Provider LLM</h3>
+        </div>
+        <p style="font-size:0.9rem;">Swap Claude for GPT-4, Gemini, or local models. Route to the best model per task.</p>
+      </div>
+    </div>
+
+    <div class="anim-fade-up delay-7" style="margin-top:2rem;text-align:center;">
+      <p style="font-size:1.3rem;color:var(--fg);">
+        Built with <span class="text-primary">&#9829;</span> for the Stellar ecosystem
+      </p>
+      <p style="margin-top:0.5rem;font-size:0.9rem;">
+        <span class="mono text-muted">github.com/enderNakamoto/walt</span>
+      </p>
+    </div>
+  </section>
+
+</div>
+
+<!-- Navigation -->
+<div class="counter" id="counter">1 / 7</div>
+<div class="nav">
+  <button onclick="prev()" title="Previous">&larr;</button>
+  <button onclick="next()" title="Next">&rarr;</button>
+</div>
+
+<script>
+  let current = 0;
+  const total = 7;
+  const deck = document.getElementById('deck');
+  const progress = document.getElementById('progress');
+  const counter = document.getElementById('counter');
+
+  function goTo(n) {
+    current = Math.max(0, Math.min(total - 1, n));
+    deck.style.transform = `translateX(-${current * 100}vw)`;
+    progress.style.width = `${((current + 1) / total) * 100}%`;
+    counter.textContent = `${current + 1} / ${total}`;
+
+    // Re-trigger animations on the current slide
+    const slide = deck.children[current];
+    slide.querySelectorAll('[class*="anim-"]').forEach(el => {
+      el.style.animation = 'none';
+      el.offsetHeight; // trigger reflow
+      el.style.animation = '';
+    });
+  }
+
+  function next() { goTo(current + 1); }
+  function prev() { goTo(current - 1); }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); next(); }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); prev(); }
+  });
+
+  // Initialize
+  goTo(0);
+</script>
+
+</body>
+</html>
