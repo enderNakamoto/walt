@@ -1,5 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { chromium } from "playwright";
+import type { Page } from "playwright";
+import { extractPageData } from "./explorer";
+import type { PageData } from "../types";
 
 export const tools: Anthropic.Tool[] = [
   {
@@ -42,15 +44,19 @@ export const tools: Anthropic.Tool[] = [
     },
   },
   {
-    name: "navigate_and_screenshot",
+    name: "inspect_page",
     description:
-      "Navigate to a URL in the exploration browser and take a screenshot. Use to verify current state of a page.",
+      "Navigate to a page and inspect its current state. Returns a screenshot and full DOM data including all visible text, interactive elements with exact selectors, and page state. ALWAYS use this before generating test code to verify what the page actually shows. The browser has the wallet mock installed so you see the same UI the test will see.",
     input_schema: {
       type: "object" as const,
       properties: {
         url: {
           type: "string",
-          description: "URL to navigate to",
+          description: "Full URL to inspect",
+        },
+        waitForSelector: {
+          type: "string",
+          description: "Optional CSS selector to wait for before inspecting (e.g. 'h1', '.vault-stats')",
         },
       },
       required: ["url"],
@@ -61,27 +67,38 @@ export const tools: Anthropic.Tool[] = [
 export async function executeTool(
   name: string,
   input: Record<string, unknown>,
+  page?: Page,
 ): Promise<unknown> {
   switch (name) {
-    case "navigate_and_screenshot":
-      return navigateAndScreenshot(input.url as string);
+    case "inspect_page":
+      return inspectPage(
+        input.url as string,
+        input.waitForSelector as string | undefined,
+        page!,
+      );
     default:
       return { error: `Unknown tool: ${name}` };
   }
 }
 
-async function navigateAndScreenshot(
+async function inspectPage(
   url: string,
-): Promise<{ screenshot: string }> {
-  const browser = await chromium.launch();
-  try {
-    const page = await browser.newPage();
-    await page.goto(url, { waitUntil: "networkidle", timeout: 30_000 });
-    const buf = await page.screenshot({ type: "jpeg", quality: 60 });
-    return {
-      screenshot: `data:image/jpeg;base64,${buf.toString("base64")}`,
-    };
-  } finally {
-    await browser.close();
+  waitForSelector: string | undefined,
+  page: Page,
+): Promise<{ screenshot: string; pageData: PageData }> {
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
+
+  if (waitForSelector) {
+    await page.waitForSelector(waitForSelector, { timeout: 10_000 });
   }
+
+  // Give the SPA time to render
+  await page.waitForTimeout(2000);
+
+  const buf = await page.screenshot({ type: "jpeg", quality: 60 });
+  const screenshot = `data:image/jpeg;base64,${buf.toString("base64")}`;
+
+  const pageData = await extractPageData(page, url);
+
+  return { screenshot, pageData };
 }

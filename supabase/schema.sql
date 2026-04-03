@@ -63,7 +63,7 @@ CREATE TABLE test_run_steps (
     test_run_id     uuid NOT NULL REFERENCES test_runs(id) ON DELETE CASCADE,
     step_index      integer NOT NULL,
     name            text NOT NULL,
-    status          text NOT NULL CHECK (status IN ('passed', 'failed', 'skipped')),
+    status          text NOT NULL CHECK (status IN ('passed', 'failed', 'skipped', 'timedOut', 'interrupted')),
     screenshot_path text,
     error_message   text,
     duration_ms     integer

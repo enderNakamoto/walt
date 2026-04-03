@@ -27,6 +27,8 @@ import {
   Copy,
   Check,
   Pencil,
+  Terminal,
+  Wifi,
 } from "lucide-react";
 
 interface StepResult {
@@ -36,6 +38,8 @@ interface StepResult {
   durationMs?: number;
   error?: string;
   screenshot?: string | null;
+  consoleLogs?: Array<{ type: string; text: string; timestamp: number }>;
+  networkErrors?: Array<{ url: string; status: number; method: string; timestamp: number }>;
 }
 
 export default function RunResults({
@@ -83,6 +87,8 @@ export default function RunResults({
             durationMs: event.durationMs,
             error: event.error,
             screenshot: event.screenshot,
+            consoleLogs: event.consoleLogs,
+            networkErrors: event.networkErrors,
           },
         ]);
         break;
@@ -94,6 +100,18 @@ export default function RunResults({
         setStatusMessage("");
         // Refresh run history
         refreshRuns();
+        break;
+      case "healing":
+        setStatusMessage(event.message);
+        break;
+      case "healed":
+        setStatusMessage(`Test auto-healed after ${event.totalAttempts} attempt${event.totalAttempts > 1 ? "s" : ""}`);
+        break;
+      case "clear_steps":
+        setSteps([]);
+        break;
+      case "healing_error":
+        setStatusMessage("");
         break;
       case "error":
         setRunStatus("error");
@@ -520,6 +538,13 @@ function StepCard({
   onScreenshotClick: (src: string) => void;
   compact?: boolean;
 }) {
+  const [showConsoleLogs, setShowConsoleLogs] = useState(false);
+  const [showNetworkErrors, setShowNetworkErrors] = useState(false);
+
+  const consoleErrors = step.consoleLogs?.filter((l) => l.type === "error" || l.type === "warning") ?? [];
+  const hasConsoleLogs = (step.consoleLogs?.length ?? 0) > 0;
+  const hasNetworkErrors = (step.networkErrors?.length ?? 0) > 0;
+
   return (
     <div
       className={`flex items-start gap-3 rounded-lg border p-3 ${
@@ -553,6 +578,81 @@ function StepCard({
             />
           </button>
         )}
+
+        {/* Context panels */}
+        {(hasConsoleLogs || hasNetworkErrors) && (
+          <div className="mt-2 flex gap-2">
+            {hasConsoleLogs && (
+              <button
+                onClick={() => setShowConsoleLogs(!showConsoleLogs)}
+                className={`flex items-center gap-1 rounded px-2 py-0.5 text-xs transition-colors ${
+                  consoleErrors.length > 0
+                    ? "bg-yellow-500/10 text-yellow-700 hover:bg-yellow-500/20"
+                    : "bg-muted text-muted-foreground hover:bg-muted/80"
+                }`}
+              >
+                <Terminal className="h-3 w-3" />
+                Console ({step.consoleLogs!.length})
+                {showConsoleLogs ? (
+                  <ChevronDown className="h-3 w-3" />
+                ) : (
+                  <ChevronRight className="h-3 w-3" />
+                )}
+              </button>
+            )}
+            {hasNetworkErrors && (
+              <button
+                onClick={() => setShowNetworkErrors(!showNetworkErrors)}
+                className="flex items-center gap-1 rounded bg-red-500/10 px-2 py-0.5 text-xs text-red-700 transition-colors hover:bg-red-500/20"
+              >
+                <Wifi className="h-3 w-3" />
+                Network ({step.networkErrors!.length})
+                {showNetworkErrors ? (
+                  <ChevronDown className="h-3 w-3" />
+                ) : (
+                  <ChevronRight className="h-3 w-3" />
+                )}
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Console logs panel */}
+        {showConsoleLogs && step.consoleLogs && (
+          <div className="mt-2 max-h-40 overflow-auto rounded border bg-muted/30 p-2">
+            {step.consoleLogs.map((log, i) => (
+              <div
+                key={i}
+                className={`font-mono text-xs leading-relaxed ${
+                  log.type === "error"
+                    ? "text-red-600"
+                    : log.type === "warning"
+                      ? "text-yellow-600"
+                      : "text-muted-foreground"
+                }`}
+              >
+                <span className="mr-1.5 font-semibold uppercase">[{log.type}]</span>
+                {log.text}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Network errors panel */}
+        {showNetworkErrors && step.networkErrors && (
+          <div className="mt-2 max-h-40 overflow-auto rounded border bg-muted/30 p-2">
+            {step.networkErrors.map((err, i) => (
+              <div key={i} className="flex items-baseline gap-2 font-mono text-xs leading-relaxed text-red-600">
+                <span className="shrink-0 font-semibold">
+                  {err.method} {err.status === 0 ? "FAILED" : err.status}
+                </span>
+                <span className="truncate text-muted-foreground" title={err.url}>
+                  {err.url}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -562,12 +662,13 @@ function StepStatusIcon({ status }: { status: string }) {
   switch (status) {
     case "passed":
       return <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-green-500" />;
-    case "failed":
-      return <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />;
     case "skipped":
       return <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />;
-    default:
+    case "running":
       return <Loader2 className="mt-0.5 h-5 w-5 shrink-0 animate-spin" />;
+    default:
+      // failed, timedOut, interrupted, or any other non-passing status
+      return <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />;
   }
 }
 

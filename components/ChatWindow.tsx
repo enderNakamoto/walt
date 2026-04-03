@@ -27,6 +27,8 @@ interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   testCode?: string;
+  inspectionScreenshot?: string;
+  inspectionUrl?: string;
 }
 
 export default function ChatWindow({
@@ -148,6 +150,20 @@ export default function ChatWindow({
             },
           ];
         });
+        break;
+
+      case "inspection":
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `msg-${Date.now()}`,
+            role: "assistant",
+            content: `Inspecting ${event.url}...`,
+            inspectionScreenshot: event.screenshot,
+            inspectionUrl: event.url,
+          },
+        ]);
+        setStatusText("");
         break;
 
       case "question":
@@ -424,6 +440,20 @@ export default function ChatWindow({
           {messages.map((msg) => (
             <div key={msg.id}>
               <MessageBubble message={msg} />
+              {msg.inspectionScreenshot && (
+                <div className="my-2 ml-9 overflow-hidden rounded-lg border">
+                  <div className="flex items-center gap-2 bg-muted/50 px-4 py-1.5">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      Page Inspection — {msg.inspectionUrl}
+                    </span>
+                  </div>
+                  <img
+                    src={msg.inspectionScreenshot}
+                    alt={`Inspection of ${msg.inspectionUrl}`}
+                    className="max-h-64 w-full object-contain bg-black/5"
+                  />
+                </div>
+              )}
               {msg.testCode && (
                 <>
                   <CodeBlock code={msg.testCode} />

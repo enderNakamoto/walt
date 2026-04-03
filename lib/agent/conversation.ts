@@ -1,4 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
+import type { Browser, Page } from "playwright";
 import { chatWithTools } from "../claude";
 import {
   getAgent,
@@ -17,6 +18,9 @@ export async function conversationRound(
   userMessage: string,
   sse: SSEWriter,
 ): Promise<void> {
+  let browser: Browser | null = null;
+  let page: Page | null = null;
+
   try {
     sse.send({ type: "status", message: "Thinking..." });
 
@@ -28,6 +32,10 @@ export async function conversationRound(
     // Load exploration data for context
     const explorationData = await loadExplorationData(agentId);
     const systemPrompt = buildSystemPrompt(explorationData);
+
+    // Pre-load agent/project info for lazy browser creation
+    const agent = await getAgent(agentId);
+    const project = agent ? await getProject(agent.project_id) : null;
 
     // Agent loop — runs until Claude stops calling tools
     while (true) {
@@ -80,6 +88,56 @@ export async function conversationRound(
               continue;
             }
 
+            // Special case: inspect_page needs a persistent browser with wallet mock
+            if (block.name === "inspect_page") {
+              // Lazy-create browser with wallet mock
+              if (!browser) {
+                const { chromium } = await import("playwright");
+                browser = await chromium.launch();
+                page = await browser.newPage();
+                // Install wallet mock if project has a wallet secret
+                if (project?.wallet_secret) {
+                  const { installMockStellarWallet } = await import("stellar-wallet-mock");
+                  await installMockStellarWallet({ page, secretKey: project.wallet_secret });
+                }
+              }
+
+              sse.send({ type: "status", message: `Inspecting ${(block.input as Record<string, unknown>).url}...` });
+              const result = await executeTool(
+                block.name,
+                block.input as Record<string, unknown>,
+                page!,
+              );
+
+              // Stream the screenshot to frontend
+              const inspectionResult = result as { screenshot: string; pageData: unknown };
+              sse.send({
+                type: "inspection",
+                url: (block.input as Record<string, unknown>).url as string,
+                screenshot: inspectionResult.screenshot,
+              });
+
+              toolResults.push({
+                type: "tool_result",
+                tool_use_id: block.id,
+                content: [
+                  {
+                    type: "image",
+                    source: {
+                      type: "base64",
+                      media_type: "image/jpeg",
+                      data: inspectionResult.screenshot.replace("data:image/jpeg;base64,", ""),
+                    },
+                  },
+                  {
+                    type: "text",
+                    text: JSON.stringify(inspectionResult.pageData, null, 2),
+                  },
+                ],
+              });
+              continue;
+            }
+
             // General tool execution
             sse.send({
               type: "status",
@@ -105,6 +163,7 @@ export async function conversationRound(
 
     sse.send({ type: "done" });
   } finally {
+    if (browser) await browser.close();
     sse.close();
   }
 }

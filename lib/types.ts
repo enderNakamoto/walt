@@ -62,6 +62,7 @@ export interface TestRunStep {
 
 // ── Exploration data (cached on project) ──
 
+/** @deprecated Use PageData for new exploration data. Kept for backward compat with old snapshots. */
 export interface PageSelectors {
   buttons: {
     text: string | null;
@@ -80,13 +81,85 @@ export interface PageSelectors {
   }[];
 }
 
+// ── Enhanced exploration types (Phase 12) ──
+
+export interface PageData {
+  url: string;
+  title: string;
+  visibleText: {
+    headings: string[];
+    labels: string[];
+    values: string[];
+  };
+  elements: {
+    buttons: ElementInfo[];
+    inputs: InputInfo[];
+    links: LinkInfo[];
+  };
+  accessibilitySnapshot: AccessibilityNode[];
+  pageState: {
+    hasLoadingIndicators: boolean;
+    isNetworkIdle: boolean;
+  };
+}
+
+export interface ElementInfo {
+  text: string;
+  testId: string | null;
+  ariaLabel: string | null;
+  cssSelector: string;
+  nearbyText: string[];
+  isDisabled: boolean;
+  isVisible: boolean;
+}
+
+export interface InputInfo {
+  label: string | null;
+  placeholder: string | null;
+  type: string | null;
+  testId: string | null;
+  cssSelector: string;
+  currentValue: string;
+  parentSection: string | null;
+}
+
+export interface LinkInfo {
+  text: string;
+  href: string;
+  isExternal: boolean;
+}
+
+export interface AccessibilityNode {
+  role: string;
+  name: string;
+  value?: string;
+  disabled?: boolean;
+  level?: number;
+}
+
 export interface ExplorationData {
   dappUrl: string;
   snapshots: {
     url: string;
     dom_summary: string;
     selectors: PageSelectors;
+    pageData?: PageData;
   }[];
+}
+
+// ── Rich test context types ──
+
+export interface ConsoleLogEntry {
+  type: string;
+  text: string;
+  timestamp: number;
+}
+
+export interface NetworkErrorEntry {
+  url: string;
+  status: number;
+  method: string;
+  timestamp: number;
 }
 
 // ── SSE events ──
@@ -100,8 +173,13 @@ export type SSEEvent =
   | { type: "test_code"; code: string }
   | { type: "text"; content: string }
   | { type: "tool"; name: string; result: unknown }
-  | { type: "step"; index: number; name: string; status: string; durationMs?: number; error?: string; screenshot?: string | null }
+  | { type: "inspection"; url: string; screenshot: string }
+  | { type: "step"; index: number; name: string; status: string; durationMs?: number; error?: string; screenshot?: string | null; consoleLogs?: ConsoleLogEntry[]; networkErrors?: NetworkErrorEntry[] }
   | { type: "done"; totalPages?: number; status?: string; durationMs?: number; error?: string }
+  | { type: "healing"; attempt: number; message: string }
+  | { type: "healed"; attempt: number; totalAttempts: number }
+  | { type: "healing_error"; message: string }
+  | { type: "clear_steps" }
   | { type: "waiting_for_user" }
   | { type: "error"; message: string };
 

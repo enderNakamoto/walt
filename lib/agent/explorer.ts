@@ -7,7 +7,7 @@ import {
   uploadScreenshot,
   getSnapshots,
 } from "../supabase";
-import type { SSEWriter, PageSelectors, ExplorationData } from "../types";
+import type { SSEWriter, PageSelectors, PageData, ExplorationData } from "../types";
 
 const EXPLORATION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 const MAX_PAGES = 15;
@@ -143,17 +143,25 @@ export async function explore(
         image: `data:image/jpeg;base64,${screenshotBuf.toString("base64")}`,
       });
 
-      // Extract interactive elements from DOM
-      const selectors = await extractSelectors(page);
+      // Extract rich page data from DOM + accessibility tree
+      const pageData = await extractPageData(page, url);
 
-      // Ask Claude to describe the page (vision)
+      // Build legacy selectors for backward compat with frontend
+      const selectors = pageDataToSelectors(pageData);
+
+      // Ask Claude to describe the page (vision) with richer context
       console.log(`[explore] Describing ${url} with Claude...`);
       let summary: string;
       try {
+        const elementSummary = [
+          `Buttons: ${pageData.elements.buttons.map((b) => b.text || b.ariaLabel || b.cssSelector).join(", ")}`,
+          `Inputs: ${pageData.elements.inputs.map((i) => i.label || i.placeholder || i.cssSelector).join(", ")}`,
+          `Headings: ${pageData.visibleText.headings.join(", ")}`,
+          `Loading: ${pageData.pageState.hasLoadingIndicators ? "yes" : "no"}`,
+        ].join("\n");
         summary = await describeScreenshot(
           screenshotBuf,
-          `Describe this page of a Stellar dApp. URL: ${url}\n`
-            + `Interactive elements found: ${JSON.stringify(selectors)}`,
+          `Describe this page of a Stellar dApp. URL: ${url}\nTitle: ${pageData.title}\n${elementSummary}`,
         );
       } catch (claudeErr) {
         console.warn(`[explore] Claude vision failed for ${url}:`, claudeErr);
@@ -172,13 +180,13 @@ export async function explore(
           url,
           screenshot_path: storagePath,
           dom_summary: summary,
-          selectors,
+          selectors: pageData as unknown as PageSelectors,
         });
       } catch (dbErr) {
         console.warn(`[explore] Failed to persist snapshot for ${url}:`, dbErr);
       }
 
-      collectedSnapshots.push({ url, dom_summary: summary, selectors });
+      collectedSnapshots.push({ url, dom_summary: summary, selectors, pageData });
 
       // Discover new links
       const links = await page.$$eval("a[href]", (els) =>
@@ -216,46 +224,283 @@ export async function explore(
   }
 }
 
-// ── Selector extraction ──
+// ── Rich page data extraction (Phase 12) ──
 
-async function extractSelectors(page: Page): Promise<PageSelectors> {
-  return page.evaluate(() => {
+export async function extractPageData(page: Page, url: string): Promise<PageData> {
+  const domData = await page.evaluate(() => {
+    // Helper: build a unique CSS selector for an element
+    function uniqueSelector(el: Element): string {
+      // Prefer data-testid
+      const testId = el.getAttribute("data-testid");
+      if (testId) return `[data-testid="${testId}"]`;
+
+      // Prefer aria-label
+      const ariaLabel = el.getAttribute("aria-label");
+      if (ariaLabel) return `[aria-label="${ariaLabel}"]`;
+
+      // Prefer id
+      if (el.id) return `#${CSS.escape(el.id)}`;
+
+      // Build a path-based selector
+      const parts: string[] = [];
+      let current: Element | null = el;
+      while (current && current !== document.body) {
+        let sel = current.tagName.toLowerCase();
+        if (current.id) {
+          sel = `#${CSS.escape(current.id)}`;
+          parts.unshift(sel);
+          break;
+        }
+        const parentEl: Element | null = current.parentElement;
+        if (parentEl) {
+          const currentTag = current.tagName;
+          const siblings = Array.from(parentEl.children).filter(
+            (c: Element) => c.tagName === currentTag,
+          );
+          if (siblings.length > 1) {
+            const idx = siblings.indexOf(current) + 1;
+            sel += `:nth-of-type(${idx})`;
+          }
+        }
+        parts.unshift(sel);
+        current = parentEl;
+      }
+      return parts.join(" > ");
+    }
+
+    // Helper: get nearby text from parent and siblings
+    function getNearbyText(el: Element): string[] {
+      const texts: string[] = [];
+      const parent = el.parentElement;
+      if (parent) {
+        // Check previous sibling text
+        const prev = el.previousElementSibling;
+        if (prev) {
+          const t = prev.textContent?.trim()?.slice(0, 80);
+          if (t) texts.push(t);
+        }
+        // Check parent text (excluding child element text)
+        for (const node of Array.from(parent.childNodes)) {
+          if (node.nodeType === Node.TEXT_NODE) {
+            const t = node.textContent?.trim()?.slice(0, 80);
+            if (t) texts.push(t);
+          }
+        }
+      }
+      return texts.slice(0, 3);
+    }
+
+    // Helper: check element visibility
+    function isElementVisible(el: Element): boolean {
+      const style = window.getComputedStyle(el);
+      if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") return false;
+      const rect = el.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    }
+
+    // Helper: find the nearest section heading above an element
+    function findParentSection(el: Element): string | null {
+      let current: Element | null = el;
+      while (current) {
+        // Check previous siblings for headings
+        let sibling = current.previousElementSibling;
+        while (sibling) {
+          if (/^H[1-6]$/.test(sibling.tagName)) {
+            return sibling.textContent?.trim()?.slice(0, 100) || null;
+          }
+          sibling = sibling.previousElementSibling;
+        }
+        current = current.parentElement;
+      }
+      return null;
+    }
+
+    // Extract visible text
+    const headings = Array.from(document.querySelectorAll("h1, h2, h3, h4, h5, h6"))
+      .map((el) => el.textContent?.trim()?.slice(0, 150) || "")
+      .filter(Boolean);
+
+    const labels = Array.from(document.querySelectorAll("label, [aria-label]"))
+      .map((el) => el.getAttribute("aria-label") || el.textContent?.trim()?.slice(0, 100) || "")
+      .filter(Boolean);
+
+    // Values: look for displayed amounts, balances, stats
+    const values = Array.from(
+      document.querySelectorAll("[data-value], .balance, .amount, .value, .stat, output, [role='status']"),
+    )
+      .map((el) => el.textContent?.trim()?.slice(0, 100) || "")
+      .filter(Boolean)
+      .slice(0, 20);
+
+    // Extract buttons
     const buttons = Array.from(
-      document.querySelectorAll("button, [role='button']"),
+      document.querySelectorAll("button, [role='button'], input[type='submit']"),
     ).map((el) => ({
-      text: el.textContent?.trim()?.slice(0, 100) || null,
+      text: el.textContent?.trim()?.slice(0, 100) || "",
       testId: el.getAttribute("data-testid"),
-      selector: el.getAttribute("data-testid")
-        ? `[data-testid="${el.getAttribute("data-testid")}"]`
-        : el.getAttribute("aria-label")
-          ? `[aria-label="${el.getAttribute("aria-label")}"]`
-          : null,
+      ariaLabel: el.getAttribute("aria-label"),
+      cssSelector: uniqueSelector(el),
+      nearbyText: getNearbyText(el),
+      isDisabled: (el as HTMLButtonElement).disabled || el.getAttribute("aria-disabled") === "true",
+      isVisible: isElementVisible(el),
     }));
 
+    // Extract inputs
     const inputs = Array.from(
       document.querySelectorAll("input, textarea, select"),
-    ).map((el) => ({
-      label:
-        el.getAttribute("aria-label") ||
-        el.getAttribute("placeholder") ||
-        el.getAttribute("name") ||
-        null,
-      testId: el.getAttribute("data-testid"),
-      type: el.getAttribute("type"),
-      selector: el.getAttribute("data-testid")
-        ? `[data-testid="${el.getAttribute("data-testid")}"]`
-        : null,
-    }));
+    ).map((el) => {
+      const inputEl = el as HTMLInputElement;
+      // Find associated label
+      let label: string | null = null;
+      if (inputEl.id) {
+        const labelEl = document.querySelector(`label[for="${inputEl.id}"]`);
+        if (labelEl) label = labelEl.textContent?.trim()?.slice(0, 100) || null;
+      }
+      if (!label) {
+        label = inputEl.getAttribute("aria-label") || null;
+      }
+      if (!label) {
+        // Check if wrapped in a label
+        const parentLabel = inputEl.closest("label");
+        if (parentLabel) label = parentLabel.textContent?.trim()?.slice(0, 100) || null;
+      }
 
-    const links = Array.from(document.querySelectorAll("a[href]")).map(
-      (el) => ({
-        text: el.textContent?.trim()?.slice(0, 100) || null,
-        href: (el as HTMLAnchorElement).href,
-      }),
-    );
+      return {
+        label,
+        placeholder: inputEl.getAttribute("placeholder"),
+        type: inputEl.getAttribute("type"),
+        testId: inputEl.getAttribute("data-testid"),
+        cssSelector: uniqueSelector(el),
+        currentValue: inputEl.value || "",
+        parentSection: findParentSection(el),
+      };
+    });
 
-    return { buttons, inputs, links };
+    // Extract links
+    const currentOrigin = window.location.origin;
+    const links = Array.from(document.querySelectorAll("a[href]")).map((el) => {
+      const anchor = el as HTMLAnchorElement;
+      return {
+        text: el.textContent?.trim()?.slice(0, 100) || "",
+        href: anchor.href,
+        isExternal: !anchor.href.startsWith(currentOrigin),
+      };
+    });
+
+    // Detect loading indicators
+    const hasLoadingIndicators =
+      document.querySelectorAll(
+        ".spinner, .loading, .skeleton, [aria-busy='true'], " +
+        "[class*='animate-spin'], [class*='animate-pulse'], " +
+        "[class*='shimmer'], [role='progressbar']",
+      ).length > 0;
+
+    return {
+      title: document.title,
+      visibleText: { headings, labels, values },
+      elements: { buttons, inputs, links },
+      pageState: { hasLoadingIndicators },
+    };
   });
+
+  // Get accessibility snapshot from Playwright (ariaSnapshot returns YAML-like string)
+  let accessibilitySnapshot: PageData["accessibilitySnapshot"] = [];
+  try {
+    const snapshotStr = await page.ariaSnapshot({ depth: 3 });
+    if (snapshotStr) {
+      accessibilitySnapshot = parseAriaSnapshot(snapshotStr);
+    }
+  } catch (a11yErr) {
+    console.warn(`[explore] Accessibility snapshot failed for ${url}:`, a11yErr);
+  }
+
+  // Check network idle state
+  let isNetworkIdle = true;
+  try {
+    await page.waitForLoadState("networkidle", { timeout: 2000 });
+  } catch {
+    isNetworkIdle = false;
+  }
+
+  return {
+    url,
+    title: domData.title,
+    visibleText: domData.visibleText,
+    elements: domData.elements,
+    accessibilitySnapshot,
+    pageState: {
+      hasLoadingIndicators: domData.pageState.hasLoadingIndicators,
+      isNetworkIdle,
+    },
+  };
+}
+
+// ── Parse Playwright ariaSnapshot YAML-like string into structured nodes ──
+// Format: lines like "  - button \"Submit\"", "  - heading \"Title\" [level=2]", "  - textbox \"Email\" [disabled]"
+
+function parseAriaSnapshot(snapshot: string): PageData["accessibilitySnapshot"] {
+  const keepRoles = new Set([
+    "button", "link", "textbox", "combobox", "checkbox", "radio",
+    "slider", "spinbutton", "switch", "tab", "menuitem",
+    "heading", "dialog", "alert", "status", "navigation", "main",
+  ]);
+
+  const result: PageData["accessibilitySnapshot"] = [];
+  const lines = snapshot.split("\n");
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("- ")) continue;
+
+    // Parse: "- role \"name\" [attributes]" or "- role \"name\": value"
+    const match = trimmed.match(/^- (\w+)(?:\s+"([^"]*)")?(.*)$/);
+    if (!match) continue;
+
+    const role = match[1];
+    const name = match[2] || "";
+    const rest = match[3]?.trim() || "";
+
+    if (!keepRoles.has(role)) continue;
+
+    const node: PageData["accessibilitySnapshot"][number] = { role, name };
+
+    // Parse level from [level=N]
+    const levelMatch = rest.match(/\[level=(\d+)\]/);
+    if (levelMatch) node.level = parseInt(levelMatch[1], 10);
+
+    // Parse disabled
+    if (rest.includes("[disabled]")) node.disabled = true;
+
+    // Parse value after colon
+    const valueMatch = rest.match(/:\s*"?([^"]*)"?$/);
+    if (valueMatch && valueMatch[1]) node.value = valueMatch[1].trim();
+
+    result.push(node);
+  }
+
+  return result;
+}
+
+// ── Convert PageData to legacy PageSelectors for backward compat ──
+
+function pageDataToSelectors(pageData: PageData): PageSelectors {
+  return {
+    buttons: pageData.elements.buttons.map((b) => ({
+      text: b.text || null,
+      testId: b.testId,
+      selector: b.cssSelector || null,
+    })),
+    inputs: pageData.elements.inputs.map((i) => ({
+      label: i.label || i.placeholder || null,
+      testId: i.testId,
+      type: i.type,
+      selector: i.cssSelector || null,
+    })),
+    links: pageData.elements.links.map((l) => ({
+      text: l.text || null,
+      href: l.href,
+    })),
+  };
 }
 
 // ── Screenshot upload helper ──
