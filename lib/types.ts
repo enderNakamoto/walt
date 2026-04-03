@@ -39,6 +39,15 @@ export interface Message {
   created_at: string;
 }
 
+export interface HealingSummary {
+  totalAttempts: number;
+  attempts: Array<{
+    attempt: number;
+    status: "failed" | "passed";
+    steps: Array<{ name: string; error?: string; durationMs?: number }>;
+  }>;
+}
+
 export interface TestRun {
   id: string;
   agent_id: string;
@@ -47,6 +56,7 @@ export interface TestRun {
   completed_at: string | null;
   duration_ms: number | null;
   error_summary: string | null;
+  healing_summary: HealingSummary | null;
 }
 
 export interface TestRunStep {
@@ -54,7 +64,7 @@ export interface TestRunStep {
   test_run_id: string;
   step_index: number;
   name: string;
-  status: "passed" | "failed" | "skipped";
+  status: string;
   screenshot_path: string | null;
   error_message: string | null;
   duration_ms: number | null;
@@ -176,8 +186,8 @@ export type SSEEvent =
   | { type: "inspection"; url: string; screenshot: string }
   | { type: "step"; index: number; name: string; status: string; durationMs?: number; error?: string; screenshot?: string | null; consoleLogs?: ConsoleLogEntry[]; networkErrors?: NetworkErrorEntry[] }
   | { type: "done"; totalPages?: number; status?: string; durationMs?: number; error?: string }
-  | { type: "healing"; attempt: number; message: string }
-  | { type: "healed"; attempt: number; totalAttempts: number }
+  | { type: "healing"; attempt: number; message: string; failedSteps?: Array<{ name: string; error: string }> }
+  | { type: "healed"; attempt: number; totalAttempts: number; passedSteps?: Array<{ name: string; durationMs: number }> }
   | { type: "healing_error"; message: string }
   | { type: "clear_steps" }
   | { type: "waiting_for_user" }

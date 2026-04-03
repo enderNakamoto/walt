@@ -243,6 +243,16 @@ export async function getTestRuns(agentId: string): Promise<TestRun[]> {
   return data as TestRun[];
 }
 
+export async function hasPassingRun(agentId: string): Promise<boolean> {
+  const { count, error } = await supabase
+    .from("test_runs")
+    .select("id", { count: "exact", head: true })
+    .eq("agent_id", agentId)
+    .eq("status", "passed");
+  if (error) return false;
+  return (count ?? 0) > 0;
+}
+
 export async function createTestRun(agentId: string): Promise<TestRun> {
   const { data, error } = await supabase
     .from("test_runs")
@@ -255,7 +265,7 @@ export async function createTestRun(agentId: string): Promise<TestRun> {
 
 export async function updateTestRun(
   id: string,
-  updates: Partial<Pick<TestRun, "status" | "completed_at" | "duration_ms" | "error_summary">>,
+  updates: Partial<Pick<TestRun, "status" | "completed_at" | "duration_ms" | "error_summary" | "healing_summary">>,
 ): Promise<void> {
   const { error } = await supabase.from("test_runs").update(updates).eq("id", id);
   if (error) throw error;

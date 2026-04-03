@@ -59,6 +59,8 @@ export default function RunResults({
   const [expandedCode, setExpandedCode] = useState<string | null>(null);
   const [runs, setRuns] = useState<Record<string, TestRun[]>>({});
   const [steps, setSteps] = useState<StepResult[]>([]);
+  const [healingAttempts, setHealingAttempts] = useState<Array<{ steps: StepResult[]; message: string; failedSteps?: Array<{ name: string; error: string }> }>>([]);
+  const [healedInfo, setHealedInfo] = useState<{ attempt: number; totalAttempts: number; passedSteps?: Array<{ name: string; durationMs: number }> } | null>(null);
   const [statusMessage, setStatusMessage] = useState("");
   const [runStatus, setRunStatus] = useState<string | null>(null);
   const [runDuration, setRunDuration] = useState<number | null>(null);
@@ -102,10 +104,15 @@ export default function RunResults({
         refreshRuns();
         break;
       case "healing":
+        // Save current failed steps as a healing attempt before clearing
+        setHealingAttempts((prev) => [
+          ...prev,
+          { steps: [...steps], message: event.message, failedSteps: event.failedSteps },
+        ]);
         setStatusMessage(event.message);
         break;
       case "healed":
-        setStatusMessage(`Test auto-healed after ${event.totalAttempts} attempt${event.totalAttempts > 1 ? "s" : ""}`);
+        setHealedInfo({ attempt: event.attempt, totalAttempts: event.totalAttempts, passedSteps: event.passedSteps });
         break;
       case "clear_steps":
         setSteps([]);
@@ -178,6 +185,8 @@ export default function RunResults({
 
   const handleRun = (agentId: string) => {
     setSteps([]);
+    setHealingAttempts([]);
+    setHealedInfo(null);
     setRunStatus(null);
     setRunDuration(null);
     setRunError(null);
@@ -245,7 +254,15 @@ export default function RunResults({
   const handleDeleteAgent = async (agentId: string) => {
     try {
       await fetch(`/api/agents/${agentId}`, { method: "DELETE" });
-      router.refresh();
+      setAgentsList((prev) => prev.filter((a) => a.id !== agentId));
+      setRuns((prev) => {
+        const next = { ...prev };
+        delete next[agentId];
+        return next;
+      });
+      if (selectedAgentId === agentId) {
+        setSelectedAgentId(null);
+      }
     } catch {
       // ignore
     }
@@ -415,6 +432,11 @@ export default function RunResults({
                     {runStatus && (
                       <div className="flex items-center gap-2">
                         <StatusBadge status={runStatus} />
+                        {healedInfo && (
+                          <Badge className="bg-blue-500/10 text-blue-600 hover:bg-blue-500/10">
+                            Auto-healed (attempt {healedInfo.totalAttempts})
+                          </Badge>
+                        )}
                         {runDuration != null && (
                           <span className="text-sm text-muted-foreground">
                             {(runDuration / 1000).toFixed(1)}s
@@ -423,6 +445,87 @@ export default function RunResults({
                       </div>
                     )}
                   </div>
+
+                  {/* Detailed run report — shown after run completes */}
+                  {!isRunning && healedInfo && healingAttempts.length > 0 && (
+                    <div className="mb-3 rounded-lg border border-blue-500/30 bg-blue-500/5 p-4">
+                      <p className="mb-3 text-sm font-medium text-blue-700">
+                        Run Report — Self-healed after {healingAttempts.length} failed {healingAttempts.length === 1 ? "attempt" : "attempts"}
+                      </p>
+                      <div className="space-y-3">
+                        {healingAttempts.map((attempt, i) => (
+                          <div key={i} className="rounded border border-destructive/20 bg-destructive/5 p-3">
+                            <div className="mb-1.5 flex items-center gap-2">
+                              <XCircle className="h-4 w-4 shrink-0 text-destructive" />
+                              <span className="text-xs font-medium text-destructive">Attempt {i + 1} — Failed</span>
+                            </div>
+                            {attempt.failedSteps && attempt.failedSteps.length > 0 ? (
+                              <div className="ml-6 space-y-1">
+                                {attempt.failedSteps.map((fs, j) => (
+                                  <div key={j} className="text-xs">
+                                    <span className="font-medium text-foreground">{fs.name}</span>
+                                    <p className="mt-0.5 text-destructive/80">{fs.error}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="ml-6 text-xs text-muted-foreground">
+                                {attempt.steps[0]?.error?.replace(/\u001b\[\d+m/g, "")?.slice(0, 150) ?? "Unknown error"}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                        <div className="rounded border border-green-500/30 bg-green-500/5 p-3">
+                          <div className="mb-1.5 flex items-center gap-2">
+                            <CheckCircle2 className="h-4 w-4 shrink-0 text-green-500" />
+                            <span className="text-xs font-medium text-green-700">Attempt {healingAttempts.length + 1} — Passed</span>
+                          </div>
+                          {healedInfo.passedSteps && healedInfo.passedSteps.length > 0 ? (
+                            <div className="ml-6 space-y-1">
+                              {healedInfo.passedSteps.map((ps, j) => (
+                                <div key={j} className="flex items-center justify-between text-xs">
+                                  <span className="font-medium text-green-800">{ps.name}</span>
+                                  <span className="text-green-600">{(ps.durationMs / 1000).toFixed(1)}s</span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="ml-6 text-xs text-green-700">All steps passed</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Simple pass report (no healing needed) */}
+                  {!isRunning && runStatus === "passed" && !healedInfo && steps.length > 0 && (
+                    <div className="mb-3 rounded-lg border border-green-500/30 bg-green-500/5 p-4">
+                      <p className="mb-2 text-sm font-medium text-green-700">Run Report — All Steps Passed</p>
+                      <div className="space-y-1">
+                        {steps.map((step) => (
+                          <div key={step.index} className="ml-2 flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-2">
+                              <CheckCircle2 className="h-3 w-3 shrink-0 text-green-500" />
+                              <span className="font-medium text-green-800">{step.name}</span>
+                            </div>
+                            {step.durationMs != null && (
+                              <span className="text-green-600">{(step.durationMs / 1000).toFixed(1)}s</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Run error (non-healed failures) */}
+                  {!isRunning && runError && !healedInfo && (
+                    <div className="mb-3 rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm">
+                      <p className="mb-1 font-medium text-destructive">Test Error</p>
+                      <pre className="whitespace-pre-wrap text-xs text-destructive/80">
+                        {runError.replace(/\u001b\[\d+m/g, "")}
+                      </pre>
+                    </div>
+                  )}
 
                   {(isRunning || isStreaming) && statusMessage && (
                     <div className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
@@ -437,15 +540,7 @@ export default function RunResults({
                     </div>
                   )}
 
-                  {runError && (
-                    <div className="mb-3 rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm">
-                      <p className="mb-1 font-medium text-destructive">Test Error</p>
-                      <pre className="whitespace-pre-wrap text-xs text-destructive/80">
-                        {runError}
-                      </pre>
-                    </div>
-                  )}
-
+                  {/* Final steps (from the passing or last attempt) */}
                   <div className="space-y-3">
                     {steps.map((step) => (
                       <StepCard
@@ -564,7 +659,7 @@ function StepCard({
           )}
         </div>
         {step.error && (
-          <p className="mt-1 text-xs text-destructive">{step.error}</p>
+          <p className="mt-1 text-xs text-destructive">{step.error.replace(/\u001b\[\d+m/g, "")}</p>
         )}
         {step.screenshot && (
           <button
@@ -781,6 +876,9 @@ function RunHistoryCard({
   onDelete: (e: React.MouseEvent) => void;
   onScreenshotClick: (src: string) => void;
 }) {
+  const hs = run.healing_summary;
+  const wasHealed = hs && hs.totalAttempts > 1;
+
   return (
     <div className={`rounded-lg border ${isExpanded ? "ring-1 ring-primary/20" : ""}`}>
       <div className="flex items-center">
@@ -795,6 +893,11 @@ function RunHistoryCard({
               <ChevronRight className="h-4 w-4 text-muted-foreground" />
             )}
             <StatusBadge status={run.status} />
+            {wasHealed && (
+              <Badge className="bg-blue-500/10 text-blue-600 hover:bg-blue-500/10 text-[10px]">
+                Healed
+              </Badge>
+            )}
             <span className="text-xs text-muted-foreground">
               {new Date(run.started_at).toLocaleString()}
             </span>
@@ -818,7 +921,52 @@ function RunHistoryCard({
 
       {isExpanded && (
         <div className="border-t">
-          {steps && steps.length > 0 ? (
+          {/* Healing report from DB */}
+          {hs && hs.attempts.length > 0 && (
+            <div className="space-y-2 px-4 py-3">
+              {hs.attempts.map((att, i) => (
+                <div
+                  key={i}
+                  className={`rounded border p-2 ${
+                    att.status === "passed"
+                      ? "border-green-500/30 bg-green-500/5"
+                      : "border-destructive/20 bg-destructive/5"
+                  }`}
+                >
+                  <div className="mb-1 flex items-center gap-2">
+                    {att.status === "passed" ? (
+                      <CheckCircle2 className="h-3 w-3 text-green-500" />
+                    ) : (
+                      <XCircle className="h-3 w-3 text-destructive" />
+                    )}
+                    <span className={`text-xs font-medium ${att.status === "passed" ? "text-green-700" : "text-destructive"}`}>
+                      Attempt {att.attempt}
+                    </span>
+                  </div>
+                  <div className="ml-5 space-y-0.5">
+                    {att.steps.map((s, j) => (
+                      <div key={j} className="flex items-center justify-between text-xs">
+                        <span className={att.status === "passed" ? "text-green-800" : "text-foreground"}>
+                          {s.name}
+                        </span>
+                        {s.durationMs != null && att.status === "passed" && (
+                          <span className="text-green-600">{(s.durationMs / 1000).toFixed(1)}s</span>
+                        )}
+                        {s.error && (
+                          <span className="max-w-[60%] truncate text-destructive/80" title={s.error}>
+                            {s.error}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Step details (screenshots etc.) — only if no healing report */}
+          {!hs && steps && steps.length > 0 && (
             <div className="space-y-2 px-4 py-3">
               {steps.map((step: StepResult) => (
                 <StepCard
@@ -829,18 +977,20 @@ function RunHistoryCard({
                 />
               ))}
             </div>
-          ) : steps && steps.length === 0 ? (
+          )}
+          {!hs && steps && steps.length === 0 && (
             <div className="px-4 py-3 text-xs text-muted-foreground">
               No step details recorded for this run.
             </div>
-          ) : (
+          )}
+          {!hs && !steps && (
             <div className="flex items-center justify-center px-4 py-3">
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
             </div>
           )}
           {run.error_summary && (
             <div className="border-t px-4 py-2 text-xs text-destructive">
-              <span className="font-medium">Error: </span>{run.error_summary}
+              <span className="font-medium">Error: </span>{run.error_summary.replace(/\u001b\[\d+m/g, "")}
             </div>
           )}
         </div>

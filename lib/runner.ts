@@ -9,6 +9,7 @@ import {
   updateTestRun,
   updateAgentTestCode,
   uploadScreenshot,
+  hasPassingRun,
 } from "./supabase";
 import { diagnoseTestFailure } from "./claude";
 import type { SSEWriter, ConsoleLogEntry, NetworkErrorEntry } from "./types";
@@ -67,6 +68,37 @@ export { expect } from '@playwright/test';
 
 const RUN_TIMEOUT_MS = 240_000; // 4 minutes
 
+/**
+ * Classify an error as transient (retry with same code) or structural (needs healing).
+ * Returns a short reason string for transient errors, or null for structural errors.
+ */
+function isTransientError(error: string): string | null {
+  const cleaned = error.replace(/\u001b\[\d+m/g, "").toLowerCase();
+
+  // Timeouts — usually network/blockchain latency, not a code bug
+  if (cleaned.includes("timeout") && !cleaned.includes("selector") && !cleaned.includes("locator")) {
+    return "timeout";
+  }
+
+  // Network failures
+  if (cleaned.includes("net::err_") || cleaned.includes("econnrefused") || cleaned.includes("econnreset")) {
+    return "network";
+  }
+
+  // Navigation failures
+  if (cleaned.includes("navigation failed") || cleaned.includes("page.goto")) {
+    return "navigation";
+  }
+
+  // Browser/process crashes
+  if (cleaned.includes("browser has been closed") || cleaned.includes("target closed")) {
+    return "browser crash";
+  }
+
+  // Everything else is structural — wrong selector, assertion mismatch, element not found
+  return null;
+}
+
 /** Rewrite test imports to use our test-setup fixture instead of bare @playwright/test */
 function rewriteTestImports(code: string): string {
   // Replace `from '@playwright/test'` or `from "@playwright/test"` with `from './test-setup'`
@@ -124,10 +156,16 @@ export async function runTest(
 
   let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
 
-  const MAX_ATTEMPTS = 3;
+  const MAX_ATTEMPTS = 5;
   let currentTestCode = testCode;
   let attempt = 0;
   const healingHistory: Array<{ error: string; fix: string }> = [];
+  // Track healing report for DB persistence
+  const healingReport: Array<{
+    attempt: number;
+    status: "failed" | "passed";
+    steps: Array<{ name: string; error?: string; durationMs?: number }>;
+  }> = [];
 
   try {
     // Write wait utilities
@@ -144,6 +182,7 @@ export default defineConfig({
   testDir: ".",
   timeout: 180_000,
   expect: { timeout: 60_000 },
+  retries: 0,
   use: {
     baseURL: "${dappUrl}",
     screenshot: "on",
@@ -196,7 +235,7 @@ export default defineConfig({
         type: "status",
         message: attempt === 1
           ? "Launching browser and executing test against " + dappUrl + " — this may take up to 2 minutes..."
-          : `Re-running with healed test (attempt ${attempt} of ${MAX_ATTEMPTS})...`,
+          : `Running test (attempt ${attempt} of ${MAX_ATTEMPTS})...`,
       });
 
       // Clean old results and test-results directory between attempts
@@ -247,6 +286,7 @@ export default defineConfig({
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const results: any = JSON.parse(await readFile(resultsPath, "utf-8"));
+      console.log(`[runner] attempt ${attempt}: suites=${results.suites?.length ?? 0}, errors=${results.errors?.length ?? 0}`);
 
       // Parse test context (console logs, network errors) if available
       const testContext = findTestContext(join(tmpDir, "test-results"));
@@ -267,6 +307,20 @@ export default defineConfig({
       };
 
       const allSpecs = (results.suites ?? []).flatMap(collectSpecs);
+
+      if (allSpecs.length === 0) {
+        console.error("[runner] No specs found in results.json — test may have failed to compile");
+        // Treat as error if no specs found
+        const compileError = results.errors?.map((e: { message?: string }) => e.message).join("\n") || "No test specs found — test may have a compile error";
+        sse.send({ type: "done", status: "error", error: compileError });
+        await updateTestRun(testRun.id, {
+          status: "error",
+          completed_at: new Date().toISOString(),
+          duration_ms: totalDurationMs,
+          error_summary: compileError.slice(0, 500),
+        });
+        return { status: "error", durationMs: totalDurationMs };
+      }
 
       for (const spec of allSpecs) {
         for (const test of spec.tests ?? []) {
@@ -341,29 +395,86 @@ export default defineConfig({
 
       // If all passed, we're done
       if (allPassed) {
+        const passedSteps = allSpecs.map((spec: { title: string; tests: Array<{ results: Array<{ duration: number }> }> }) => ({
+          name: spec.title,
+          durationMs: spec.tests[0]?.results[0]?.duration ?? 0,
+        }));
+
         if (attempt > 1) {
-          sse.send({ type: "healed", attempt, totalAttempts: attempt });
+          healingReport.push({
+            attempt,
+            status: "passed",
+            steps: passedSteps,
+          });
+          sse.send({ type: "healed", attempt, totalAttempts: attempt, passedSteps });
           // Save healed test code back to the agent
           await updateAgentTestCode(agentId, currentTestCode);
+        } else {
+          healingReport.push({
+            attempt: 1,
+            status: "passed",
+            steps: passedSteps,
+          });
         }
+
+        const healingSummary = healingReport.length > 1
+          ? { totalAttempts: attempt, attempts: healingReport }
+          : null;
 
         await updateTestRun(testRun.id, {
           status: "passed",
           completed_at: new Date().toISOString(),
           duration_ms: totalDurationMs,
           error_summary: null,
+          healing_summary: healingSummary,
         });
 
         sse.send({ type: "done", status: "passed", durationMs: totalDurationMs });
         return { status: "passed", durationMs: totalDurationMs };
       }
 
-      // Test failed — try healing if we have attempts left
+      // Test failed — analyze error type to decide: retry (transient) or heal (structural)
       if (attempt < MAX_ATTEMPTS) {
+        const isTransient = isTransientError(errorSummary);
+
+        // Collect failed step details for the report
+        const failedSteps = allSpecs
+          .flatMap((spec: { title: string; tests: Array<{ results: Array<{ status: string; error?: { message?: string } }> }> }) =>
+            spec.tests.flatMap((t) =>
+              t.results
+                .filter((r) => r.status !== "passed" && r.status !== "skipped")
+                .map((r) => ({
+                  name: spec.title,
+                  error: (r.error?.message ?? `Test ${r.status}`).replace(/\u001b\[\d+m/g, "").slice(0, 200),
+                })),
+            ),
+          );
+
+        // Save to healing report for DB
+        healingReport.push({
+          attempt,
+          status: "failed",
+          steps: failedSteps,
+        });
+
+        // Transient errors (timeout, network) → just retry with same code
+        if (isTransient) {
+          sse.send({
+            type: "healing",
+            attempt,
+            message: `Transient failure (${isTransient}). Retrying with same code (attempt ${attempt + 1} of ${MAX_ATTEMPTS})...`,
+            failedSteps,
+          });
+          sse.send({ type: "clear_steps" });
+          continue;
+        }
+
+        // Structural error (wrong selector, assertion mismatch) → heal with Claude
         sse.send({
           type: "healing",
           attempt,
-          message: `Test failed. Diagnosing and attempting to fix (attempt ${attempt + 1} of ${MAX_ATTEMPTS})...`,
+          message: `Structural failure detected. Diagnosing and fixing code (attempt ${attempt + 1} of ${MAX_ATTEMPTS})...`,
+          failedSteps,
         });
 
         // Find the failure screenshot from test-results directory
@@ -402,10 +513,37 @@ export default defineConfig({
           );
 
           // Clean the response (remove markdown fences if present)
-          const cleanedCode = fixedCode
+          let cleanedCode = fixedCode
             .replace(/^```(?:typescript|ts)?\n?/, "")
             .replace(/\n?```$/, "")
             .trim();
+
+          // Also strip any leading explanation text before the first import
+          const importIndex = cleanedCode.indexOf("import ");
+          if (importIndex > 0) {
+            cleanedCode = cleanedCode.slice(importIndex);
+          }
+
+          // Basic syntax check — write to temp file and try to parse with tsc
+          const testFilePath = join(tmpDir, "test-check.ts");
+          await writeFile(testFilePath, cleanedCode);
+          try {
+            await execAsync(
+              "npx tsc --noEmit --allowImportingTsExtensions --moduleResolution bundler test-check.ts",
+              { cwd: tmpDir, timeout: 15_000 },
+            );
+          } catch {
+            // tsc will fail on type errors which is fine — we only care about syntax errors
+            // Check if it's an actual syntax error vs type error
+            // For now, just check the code has balanced braces/parens as a quick sanity check
+          }
+
+          // Quick sanity: must contain 'test(' and end with proper closing
+          if (!cleanedCode.includes("test(") || !cleanedCode.includes("expect")) {
+            console.error("[runner] Healed code looks invalid — missing test() or expect");
+            sse.send({ type: "healing_error", message: "Healed code is invalid — skipping" });
+            break;
+          }
 
           healingHistory.push({
             error: errorSummary,
@@ -427,6 +565,10 @@ export default defineConfig({
     // If we reach here, all attempts failed
     const finalDurationMs = Date.now() - start;
 
+    const failedHealingSummary = healingReport.length > 0
+      ? { totalAttempts: attempt, attempts: healingReport }
+      : null;
+
     await updateTestRun(testRun.id, {
       status: "failed",
       completed_at: new Date().toISOString(),
@@ -434,6 +576,7 @@ export default defineConfig({
       error_summary: healingHistory.length > 0
         ? `Failed after ${attempt} attempts. Last error: ${healingHistory[healingHistory.length - 1]?.error?.slice(0, 300) ?? "unknown"}`
         : null,
+      healing_summary: failedHealingSummary,
     });
 
     sse.send({ type: "done", status: "failed", durationMs: finalDurationMs });

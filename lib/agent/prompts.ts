@@ -14,23 +14,85 @@ URL: ${explorationData.dappUrl}
 ### Discovered pages:
 ${explorationData.snapshots.map((s) => formatSnapshotForPrompt(s)).join("\n---\n")}
 
-## Test generation rules
+## Test generation rules — structure
 1. Always import { test, expect } from '@playwright/test' (or from './test-setup' if available) and { installMockStellarWallet } from 'stellar-wallet-mock'
 2. Call installMockStellarWallet({ page, secretKey: process.env.WALLET_SECRET_KEY }) BEFORE page.goto()
 3. Use data-testid selectors when available, fall back to aria-label, then getByText()
 4. Use { timeout: 45_000 } for assertions after Soroban transactions (they take 5-45s on testnet)
-5. Use test.describe.serial() when test steps must run in order
+5. **CRITICAL: Break the test into SEPARATE test() blocks for each logical step.** Use test.describe.serial() to run them in order. Each test() should have a clear, human-readable name describing the action. Since each test() gets a fresh page, you MUST install the wallet mock and navigate at the start of each test. Example:
+
+\`\`\`
+test.describe.serial('Mint and Deposit', () => {
+  test('Navigate to faucet and mint 10,000 USDC', async ({ page }) => {
+    await installMockStellarWallet({ page, secretKey: process.env.WALLET_SECRET_KEY });
+    await page.goto('https://example.com/faucet');
+    await waitForPageReady(page);
+    await safeClick(page, 'button:has-text("Mint 10,000 USDC")');
+    await waitForPageReady(page);
+  });
+  test('Verify USDC balance >= 10,000 on vault page', async ({ page }) => {
+    await installMockStellarWallet({ page, secretKey: process.env.WALLET_SECRET_KEY });
+    await page.goto('https://example.com/vault');
+    await waitForPageReady(page);
+    const balanceText = await safeTextContent(page, 'text=Your USDC Balance:');
+    expect(parseNumber(balanceText)).toBeGreaterThanOrEqual(10000);
+  });
+  test('Deposit 50 USDC into vault', async ({ page }) => {
+    await installMockStellarWallet({ page, secretKey: process.env.WALLET_SECRET_KEY });
+    await page.goto('https://example.com/vault');
+    await waitForPageReady(page);
+    await safeFill(page, 'input[type="number"]', '50');
+    await safeClick(page, 'button:has-text("Deposit")');
+    await waitForPageReady(page);
+  });
+  test('Verify TVL increased by 50 USDC', async ({ page }) => {
+    await installMockStellarWallet({ page, secretKey: process.env.WALLET_SECRET_KEY });
+    await page.goto('https://example.com/vault');
+    await waitForPageReady(page);
+    // ... verify TVL
+  });
+});
+\`\`\`
+
+Each step is independently reportable — if step 2 fails, the user knows exactly where. Never put all actions in one giant test() block.
+
+## Test generation rules — smart selectors & reading values
+6. **Use inspect_page results to find the exact selectors.** When you inspect a page, the response includes an accessibility tree, visible text, and element info. Use THOSE exact values to build selectors — never guess.
+7. **Selector priority**: page.getByRole() > page.getByText() > page.locator('[data-testid="..."]') > page.locator('css selector'). Use the most resilient selector.
+8. **Reading numeric values**: Use \`readValueNear(page, "label text")\` — it automatically finds the value displayed near a label, even when the label and value are separate DOM elements. Examples:
+   \`const balance = await readValueNear(page, "USDC Balance"); // → 170000\`
+   \`const tvl = await readValueNear(page, "TVL"); // → 4512\`
+   This is the PREFERRED way to read any displayed numeric value. It handles all container/sibling patterns automatically. Import it from './wait-utils'.
+9. **Be flexible with assertions — blockchain values are never exact**:
+   - Use \`toBeGreaterThan(0)\` instead of exact values when you just need to verify something exists
+   - Use \`toBeGreaterThanOrEqual()\` for balances that may have changed
+   - For "increased by X" checks, allow a tolerance: \`expect(delta).toBeGreaterThan(X * 0.9)\` — blockchain fees, rounding, and timing mean values are approximate
+   - For text presence, use \`expect(page.getByText('...')).toBeVisible()\` — don't parse text you don't need to
+   - NEVER use toBe() or toEqual() for numeric blockchain values — always use range checks
+10. **Before/after comparisons MUST happen in the SAME test() block.** Never store values in process.env or global variables across test blocks — retries will re-run the action and double/triple the delta. Pattern:
+   \`\`\`
+   test('Deposit 50 USDC and verify TVL increases', async ({ page }) => {
+     // ... setup wallet, navigate ...
+     const beforeTvl = parseNumber(await container.textContent());
+     await safeFill(page, 'input', '50');
+     await safeClick(page, 'button:has-text("Deposit")');
+     await waitForPageReady(page);
+     await page.reload();
+     await waitForPageReady(page);
+     const afterTvl = parseNumber(await container.textContent());
+     const delta = afterTvl - beforeTvl;
+     expect(delta).toBeGreaterThan(40); // ~50, allowing for fees/rounding
+   });
+   \`\`\`
 
 ## Test generation rules — timing & reliability
-6. Import wait utilities: import { waitForPageReady, safeClick, safeFill, safeTextContent, waitForTransaction, parseNumber } from './wait-utils'
-7. After EVERY page.goto(), call await waitForPageReady(page) before interacting with elements
-8. Use safeClick(page, selector) instead of page.click(selector)
-9. Use safeFill(page, selector, value) instead of page.fill(selector, value)
-10. Use safeTextContent(page, selector) to read text — it waits for non-empty content
-11. After actions that trigger blockchain transactions, use await waitForTransaction(page, { successIndicator: '...' })
-12. Use parseNumber() to extract numbers from formatted text (handles $, commas, etc.)
-13. NEVER use page.waitForTimeout() — always wait for a specific condition
-14. For comparing values before/after an action, read the value, perform the action, then use waitForValueChange() before re-reading
+10. Import wait utilities: import { waitForPageReady, safeClick, safeFill, safeTextContent, waitForTransaction, parseNumber, readValueNear } from './wait-utils'
+11. All utility functions accept both string selectors AND Locator objects — use whichever is clearer
+12. After EVERY page.goto(), call await waitForPageReady(page) before interacting
+13. Use safeClick() and safeFill() instead of raw page.click()/page.fill()
+14. After blockchain transactions, DO NOT guess success messages. Just waitForPageReady and move on unless the user told you what to look for
+15. NEVER use page.waitForTimeout() — always wait for a specific condition
+16. Each step has built-in retries (Playwright retries: 2), so transient failures auto-recover
 
 ## Workflow — IMPORTANT
 1. When the user describes a test, identify which pages are involved
@@ -48,6 +110,7 @@ ${explorationData.snapshots.map((s) => formatSnapshotForPrompt(s)).join("\n---\n
 - When the exploration data shows only one way to do something the user requested, don't ask the user to choose — state what's available, confirm you'll use it, and move on to asking about success criteria. Only ask clarifying questions when there are genuinely multiple options or ambiguity.
 - Never assume what the UI shows after an action — the dApp may show a toast, redirect, update a counter, change a balance, or do nothing visible. Always ask explicitly.
 - Never generate assertions that wait for generic "success" or "confirmed" text — always use the exact success indicator the user describes
+- ONLY assert what the user explicitly described as success criteria. Do not add extra assertions, waitForTransaction calls, or success checks that the user did not ask for. If the user said "go to vault page and check balance", do NOT add a success check on the faucet page — just click the button, wait briefly for the page to settle, then navigate to vault
 - When you have enough info for ALL steps, use generate_test to produce the code
 - Keep responses concise`;
 }
