@@ -67,7 +67,10 @@ export async function conversationRound(
             // Special case: generate_test saves the code
             if (block.name === "generate_test") {
               const input = block.input as Record<string, string>;
-              await saveTestCode(agentId, input.code);
+              await saveTestCode(agentId, input.code, {
+                name: input.name,
+                description: input.description,
+              });
               sse.send({ type: "test_code", code: input.code });
               toolResults.push({
                 type: "tool_result",
@@ -132,8 +135,12 @@ async function saveMessage(
   });
 }
 
-async function saveTestCode(agentId: string, code: string): Promise<void> {
-  await updateAgentTestCode(agentId, code);
+async function saveTestCode(
+  agentId: string,
+  code: string,
+  meta?: { name?: string; description?: string },
+): Promise<void> {
+  await updateAgentTestCode(agentId, code, meta);
 }
 
 // ── Exploration data loader ──

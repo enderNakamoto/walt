@@ -64,18 +64,18 @@ export default defineConfig({
     );
 
     // Install dependencies
-    sse.send({ type: "status", message: "Installing dependencies..." });
+    sse.send({ type: "status", message: "Installing test dependencies (playwright, wallet-mock)..." });
     await execAsync("npm install", { cwd: tmpDir, timeout: 60_000 });
 
     // Install Chromium browser
-    sse.send({ type: "status", message: "Setting up browser..." });
+    sse.send({ type: "status", message: "Setting up Chromium browser..." });
     await execAsync("npx playwright install chromium", {
       cwd: tmpDir,
       timeout: 60_000,
     });
 
     // Run test
-    sse.send({ type: "status", message: "Running test..." });
+    sse.send({ type: "status", message: "Launching browser and executing test against " + dappUrl + " — this may take up to 2 minutes..." });
 
     const env = {
       ...process.env,
@@ -87,7 +87,7 @@ export default defineConfig({
 
     let testStderr = "";
     try {
-      await execAsync("npx playwright test --reporter=json", {
+      await execAsync("npx playwright test", {
         cwd: tmpDir,
         env,
         timeout: RUN_TIMEOUT_MS,
@@ -131,62 +131,72 @@ export default defineConfig({
     let allPassed = true;
     let errorSummary = "";
 
-    for (const suite of results.suites ?? []) {
-      for (const spec of suite.specs ?? []) {
-        for (const test of spec.tests ?? []) {
-          for (const result of test.results ?? []) {
-            const screenshotAttachment = result.attachments?.find(
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (a: any) => a.contentType?.startsWith("image/"),
-            );
+    // Recursively collect specs from nested suites (test.describe.serial creates nesting)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    function collectSpecs(suite: any): any[] {
+      const specs = [...(suite.specs ?? [])];
+      for (const nested of suite.suites ?? []) {
+        specs.push(...collectSpecs(nested));
+      }
+      return specs;
+    }
 
-            let screenshotData: string | null = null;
-            let screenshotPath: string | null = null;
+    const allSpecs = (results.suites ?? []).flatMap(collectSpecs);
 
-            if (screenshotAttachment?.path && existsSync(screenshotAttachment.path)) {
-              const buf = readFileSync(screenshotAttachment.path);
-              screenshotData = `data:image/png;base64,${buf.toString("base64")}`;
+    for (const spec of allSpecs) {
+      for (const test of spec.tests ?? []) {
+        for (const result of test.results ?? []) {
+          const screenshotAttachment = result.attachments?.find(
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (a: any) => a.contentType?.startsWith("image/"),
+          );
 
-              // Upload to Supabase Storage
-              try {
-                screenshotPath = await uploadScreenshot(
-                  buf,
-                  `runs/${testRun.id}/step-${stepIndex}.png`,
-                );
-              } catch {
-                // Non-critical — skip upload
-              }
+          let screenshotData: string | null = null;
+          let screenshotPath: string | null = null;
+
+          if (screenshotAttachment?.path && existsSync(screenshotAttachment.path)) {
+            const buf = readFileSync(screenshotAttachment.path);
+            screenshotData = `data:image/png;base64,${buf.toString("base64")}`;
+
+            // Upload to Supabase Storage
+            try {
+              screenshotPath = await uploadScreenshot(
+                buf,
+                `runs/${testRun.id}/step-${stepIndex}.png`,
+              );
+            } catch {
+              // Non-critical — skip upload
             }
-
-            const stepStatus = result.status as "passed" | "failed" | "skipped";
-            if (stepStatus !== "passed") allPassed = false;
-            if (stepStatus === "failed" && result.error?.message) {
-              errorSummary = result.error.message;
-            }
-
-            sse.send({
-              type: "step",
-              index: stepIndex,
-              name: spec.title,
-              status: stepStatus,
-              durationMs: result.duration,
-              error: result.error?.message,
-              screenshot: screenshotData,
-            });
-
-            // Persist step
-            await createTestRunStep({
-              test_run_id: testRun.id,
-              step_index: stepIndex,
-              name: spec.title,
-              status: stepStatus,
-              screenshot_path: screenshotPath,
-              error_message: result.error?.message ?? null,
-              duration_ms: result.duration ?? null,
-            });
-
-            stepIndex++;
           }
+
+          const stepStatus = result.status as "passed" | "failed" | "skipped";
+          if (stepStatus !== "passed") allPassed = false;
+          if (stepStatus === "failed" && result.error?.message) {
+            errorSummary = result.error.message;
+          }
+
+          sse.send({
+            type: "step",
+            index: stepIndex,
+            name: spec.title,
+            status: stepStatus,
+            durationMs: result.duration,
+            error: result.error?.message,
+            screenshot: screenshotData,
+          });
+
+          // Persist step
+          await createTestRunStep({
+            test_run_id: testRun.id,
+            step_index: stepIndex,
+            name: spec.title,
+            status: stepStatus,
+            screenshot_path: screenshotPath,
+            error_message: result.error?.message ?? null,
+            duration_ms: result.duration ?? null,
+          });
+
+          stepIndex++;
         }
       }
     }

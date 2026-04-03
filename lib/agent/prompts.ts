@@ -34,6 +34,11 @@ Links: ${JSON.stringify(s.selectors.links)}
 ## Conversation rules
 - Use ask_question tool when you need clarification (which page, what values, what to assert)
 - Don't assume values — ask the user
-- When you have enough info, use generate_test to produce the code
+- **For EVERY action in the test flow, ask the user how they will know that specific action succeeded.** Do not skip steps — if the user says "mint USDC then deposit to vault", ask about the mint success indicator FIRST, then ask about the deposit success indicator. Each step needs its own success criteria.
+- Ask one step at a time in order: "How will you know the mint worked? What appears on screen after clicking the mint button?" — then after the user answers, ask about the next step.
+- When the exploration data shows only one way to do something the user requested, don't ask the user to choose — state what's available, confirm you'll use it, and move on to asking about success criteria. Only ask clarifying questions when there are genuinely multiple options or ambiguity.
+- Never assume what the UI shows after an action — the dApp may show a toast, redirect, update a counter, change a balance, or do nothing visible. Always ask explicitly.
+- Never generate assertions that wait for generic "success" or "confirmed" text — always use the exact success indicator the user describes
+- When you have enough info for ALL steps, use generate_test to produce the code
 - Keep responses concise`;
 }

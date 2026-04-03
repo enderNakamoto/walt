@@ -31,14 +31,14 @@ export const tools: Anthropic.Tool[] = [
         },
         name: {
           type: "string",
-          description: "Short name for the test",
+          description: "A descriptive name summarizing the test scenario, e.g. 'Mint USDC and Deposit to Vault' or 'Faucet Balance Check'. Do NOT use generic names like 'Test Agent'.",
         },
         description: {
           type: "string",
-          description: "What the test verifies",
+          description: "A detailed plain-english description of what the test does step by step, e.g. 'Navigates to faucet, mints 10k USDC, then deposits 500 to vault and verifies TVL increases'",
         },
       },
-      required: ["code", "name"],
+      required: ["code", "name", "description"],
     },
   },
   {
