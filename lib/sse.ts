@@ -7,17 +7,21 @@ export function createSSEStream(): SSEWriter & {
   const stream = new TransformStream();
   const writer = stream.writable.getWriter();
   const encoder = new TextEncoder();
+  let closed = false;
 
   return {
     readable: stream.readable,
 
     send: (data: SSEEvent) => {
+      if (closed) return;
       writer.write(encoder.encode(`data: ${JSON.stringify(data)}\n\n`)).catch(() => {
         // Client disconnected — swallow the error
       });
     },
 
     close: () => {
+      if (closed) return;
+      closed = true;
       writer.close().catch(() => {
         // Already closed
       });
