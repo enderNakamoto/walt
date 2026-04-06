@@ -1,0 +1,5 @@
+[build]
+buildCommand = "npm ci && npx playwright install --with-deps chromium && npm run build"
+
+[deploy]
+startCommand = "npm start"
