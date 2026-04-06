@@ -284,7 +284,6 @@ export default defineConfig({
         return { status: "error", durationMs: totalDurationMs, testRunId: testRun.id };
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const results: any = JSON.parse(await readFile(resultsPath, "utf-8"));
       console.log(`[runner] attempt ${attempt}: suites=${results.suites?.length ?? 0}, errors=${results.errors?.length ?? 0}`);
 
@@ -297,7 +296,6 @@ export default defineConfig({
       let errorSummary = "";
 
       // Recursively collect specs from nested suites (test.describe.serial creates nesting)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const collectSpecs = (suite: any): any[] => {
         const specs = [...(suite.specs ?? [])];
         for (const nested of suite.suites ?? []) {
@@ -326,7 +324,6 @@ export default defineConfig({
         for (const test of spec.tests ?? []) {
           for (const result of test.results ?? []) {
             const screenshotAttachment = result.attachments?.find(
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               (a: any) => a.contentType?.startsWith("image/"),
             );
 
