@@ -12,19 +12,15 @@ export function createSSEStream(): SSEWriter & {
     readable: stream.readable,
 
     send: (data: SSEEvent) => {
-      try {
-        writer.write(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
-      } catch {
+      writer.write(encoder.encode(`data: ${JSON.stringify(data)}\n\n`)).catch(() => {
         // Client disconnected — swallow the error
-      }
+      });
     },
 
     close: () => {
-      try {
-        writer.close();
-      } catch {
+      writer.close().catch(() => {
         // Already closed
-      }
+      });
     },
 
     response: () =>
