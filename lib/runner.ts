@@ -1,5 +1,5 @@
 import { exec } from "child_process";
-import { writeFile, mkdir, rm, readFile } from "fs/promises";
+import { writeFile, mkdir, rm, readFile, symlink } from "fs/promises";
 import { readFileSync, existsSync, readdirSync } from "fs";
 import { join } from "path";
 import { randomUUID } from "crypto";
@@ -193,28 +193,14 @@ export default defineConfig({
 `,
     );
 
-    // Write package.json
+    // Write minimal package.json (type: module needed for ES imports)
     await writeFile(
       join(tmpDir, "package.json"),
-      JSON.stringify({
-        type: "module",
-        dependencies: {
-          "@playwright/test": "latest",
-          "stellar-wallet-mock": "github:SentinelFi/stellar_wallet_mock",
-        },
-      }),
+      JSON.stringify({ type: "module" }),
     );
 
-    // Install dependencies
-    sse.send({ type: "status", message: "Installing test dependencies (playwright, wallet-mock)..." });
-    await execAsync("npm install", { cwd: tmpDir, timeout: 60_000 });
-
-    // Install Chromium browser
-    sse.send({ type: "status", message: "Setting up Chromium browser..." });
-    await execAsync("npx playwright install chromium", {
-      cwd: tmpDir,
-      timeout: 60_000,
-    });
+    // Reuse app's pre-installed node_modules — avoids npm install + git at runtime
+    await symlink(join(process.cwd(), "node_modules"), join(tmpDir, "node_modules"));
 
     const env = {
       ...process.env,
