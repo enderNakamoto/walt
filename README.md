@@ -1,6 +1,22 @@
 # WALT — Wallet-Aware LLM Tester
 
-AI agent that explores Stellar/Soroban dApps and generates self-healing Playwright tests from natural language. Give it a URL, it crawls the dApp live, you describe a test in plain English, and the agent generates, runs, and auto-fixes it.
+**WALT (Wallet-Aware LLM Tester)** is an AI-powered platform that lets teams create autonomous testing agents for Stellar/Soroban dApp frontends.
+
+### How it works
+
+Teams point WALT at their dApp URL, and an AI-driven crawler automatically explores the application — discovering pages, capturing screenshots, extracting DOM elements, and building a rich map of the UI using Claude's vision capabilities. From this exploration data, teams describe tests in plain English through a chat interface. The AI agent asks clarifying questions, inspects live pages, and generates complete Playwright test suites — no manual test writing required.
+
+### Wallet Mocking
+
+WALT integrates `stellar-wallet-mock` to simulate the Freighter wallet during both exploration and test execution. This means agents can connect wallets, sign Soroban transactions, and interact with smart contracts exactly as a real user would, all without requiring actual wallet extensions or testnet funds.
+
+### Self-Healing Tests
+
+When tests fail, WALT doesn't just report the error. It takes a screenshot of the failure state, sends it to Claude for visual diagnosis, and automatically rewrites the test code to match the actual page state — retrying up to 5 times. It distinguishes between transient errors (timeouts, network issues) and structural errors (changed selectors, moved elements), only applying AI-powered healing where it's needed.
+
+### Agent Swarms & Scheduled Monitoring
+
+Teams can build multiple testing agents, each covering different user flows, and schedule them to run on intervals (hourly, daily, weekly). This creates a continuous monitoring swarm that catches regressions, broken flows, and UI changes automatically — with detailed per-step reports, screenshots, and healing history stored for every run.
 
 ## Origin Story
 
@@ -9,18 +25,6 @@ We were building a niche prediction market on Soroban and hit a wall — there w
 So we built **[stellar-wallet-mock](https://github.com/SentinelFi/stellar_wallet_mock)** — an open-source library that mocks the Freighter wallet in Playwright. Install it, pass a secret key, and your tests can sign Soroban transactions automatically.
 
 Then we thought bigger: what if an AI agent could **explore any Stellar dApp, generate the tests, and self-heal when things break**? That's WALT. It uses `stellar-wallet-mock` under the hood to launch autonomous front-end agents that test your dApp and find bugs before your users do.
-
-## Features
-
-- **URL-only exploration** — crawls any deployed Stellar dApp, extracts full DOM data, accessibility tree, and describes pages via Claude vision
-- **Live page inspection** — agent inspects pages with wallet mock installed before writing code, using verified selectors from the actual DOM
-- **Natural language test generation** — describe what to test in chat, agent asks about success criteria step-by-step, generates multi-step Playwright tests
-- **Self-healing tests** — when a test fails, the agent sees the failure screenshot, diagnoses the issue with Claude vision, fixes the code, and retries (up to 5 attempts). Transient errors (timeout, network) retry same code; structural errors (wrong selector, moved element) trigger intelligent healing
-- **Smart waits** — React-aware wait utilities handle hydration, loading spinners, blockchain transaction timing, and controlled inputs. No brittle `waitForTimeout` calls
-- **Wallet-aware** — uses [`stellar-wallet-mock`](https://github.com/SentinelFi/stellar_wallet_mock) to simulate Freighter wallet for signing Soroban transactions
-- **Scheduled monitoring** — cron-based recurring runs (1h to 7d intervals) with detailed reports. Catch regressions before users do
-- **Rich test results** — console logs, network errors, per-step screenshots, healing attempt history with detailed reports
-- **Live streaming** — SSE-powered real-time updates for exploration, chat, test execution, and self-healing progress
 
 ## Quick Start
 
