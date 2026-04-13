@@ -2,6 +2,7 @@ FROM node:22-bookworm-slim
 
 # Install Playwright system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
     libglib2.0-0 \
     libnss3 \
     libnspr4 \
